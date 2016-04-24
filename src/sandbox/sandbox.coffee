@@ -2,6 +2,12 @@ window.onload = () ->
 
     ContentTools.IMAGE_UPLOADER = ImageUploader.createImageUploader
 
+    # Uncomment the following lines to use the cloudinary image uploader
+    #CloudinaryImageUploader.CLOUD_NAME = ''
+    #CloudinaryImageUploader.UPLOAD_PRESET = ''
+    #ContentTools.IMAGE_UPLOADER = (dialog) ->
+    #    return CloudinaryImageUploader.createImageUploader(dialog)
+
     # Build a palette of styles
     ContentTools.StylePalette.add([
         new ContentTools.Style('By-line', 'article__by-line', ['p']),
@@ -11,18 +17,22 @@ window.onload = () ->
         new ContentTools.Style('Example + Bad', 'example--bad', ['pre'])
         ])
 
-    editor = new ContentTools.EditorApp.get()
+    editor = ContentTools.EditorApp.get()
     editor.init('.editable', 'data-name')
 
-    editor.bind 'save', (regions, autoSave) ->
+    editor.addEventListener 'saved', (ev) ->
+
         # Handle the page being saved
+        console.log ev.detail().regions
+
+        if Object.keys(ev.detail().regions).length == 0
+            return
 
         # Mark the ignition as busy while we save the page
         editor.busy(true)
 
         # Simulate saving the page
         saved = () =>
-
             # Save has completed set the app as no longer busy
             editor.busy(false)
 

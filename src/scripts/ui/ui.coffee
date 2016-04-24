@@ -1,6 +1,6 @@
 class ContentTools.ComponentUI
 
-    # toAll UI compontents inherit from the CompontentUI class which provides base
+    # All UI compontents inherit from the CompontentUI class which provides base
     # functionality and a common API.
 
     constructor: () ->
@@ -27,13 +27,13 @@ class ContentTools.ComponentUI
         # Return the mounted DOM element for the component
         return @_domElement
 
-    parent: () ->
-        # Return the parent of the component
-        return @_parent
-
     isMounted: () ->
         # Return true if the component is mounted to the DOM
         return @_domElement != null
+
+    parent: () ->
+        # Return the parent of the component
+        return @_parent
 
     # Methods
 
@@ -54,11 +54,18 @@ class ContentTools.ComponentUI
         # Add a CSS class to the DOM element
         unless @isMounted()
             return
-
         ContentEdit.addCSSClass(@_domElement, className)
 
     detatch: (component) ->
         # Detach a child component from this component
+
+        # Find the component to detatch (if not found return)
+        componentIndex = @_children.indexOf(component)
+        if componentIndex == -1
+            return
+
+        # Remove the component from the components children
+        @_children.splice(componentIndex, 1)
 
     mount: () ->
         # Mount the component to the DOM
@@ -76,38 +83,50 @@ class ContentTools.ComponentUI
             return
 
         @_removeDOMEventListeners()
-        @_domElement.parentNode.removeChild(@_domElement)
+        if @_domElement.parentNode
+            @_domElement.parentNode.removeChild(@_domElement)
+
         @_domElement = null
 
     # Event methods
 
-    bind: (eventName, callback) ->
-        # Bind a callback to an event
+    addEventListener: (eventName, callback) ->
+        # Add an event listener for the UI component
 
         # Check a list has been set for the specified event
-        if @_bindings[eventName] is undefined
+        if @_bindings[eventName] == undefined
             @_bindings[eventName] = []
 
         # Add the callback to list for the event
         @_bindings[eventName].push(callback)
 
-        return callback
+        return
 
-    trigger: (eventName, args...) ->
-        # Trigger an event against the node
+    createEvent: (eventName, detail) ->
+        # Create an event
+        return new ContentTools.Event(eventName, detail)
+
+    dispatchEvent: (ev) ->
+        # Dispatch an event against the UI compontent
 
         # Check we have callbacks to trigger for the event
-        unless @_bindings[eventName]
-            return
+        unless @_bindings[ev.name()]
+            return not ev.defaultPrevented()
 
         # Call each function bound to the event
-        for callback in @_bindings[eventName]
+        for callback in @_bindings[ev.name()]
+            if ev.propagationStopped()
+                break
+
             if not callback
                 continue
-            callback.call(this, args...)
 
-    unbind: (eventName, callback) ->
-        # Unbind a callback from an event
+            callback.call(this, ev)
+
+        return not ev.defaultPrevented()
+
+    removeEventListener: (eventName, callback) ->
+        # Remove a previously registered event listener for the UI component
 
         # If no eventName is specified remove all events
         unless eventName
@@ -136,9 +155,7 @@ class ContentTools.ComponentUI
     _removeDOMEventListeners: () ->
         # Remove all event bindings for the DOM element in this method
 
-    # Class methods
-
-    createDiv: (classNames, attributes, content) ->
+    @createDiv: (classNames, attributes, content) ->
         # All UI components are constructed entirely from one or more nested
         # <div>s, this class method provides a shortcut for creating a <div>
         # including the initial CSS class names, attributes and content.
@@ -170,8 +187,15 @@ class ContentTools.WidgetUI extends ContentTools.ComponentUI
         # Attach a component as a child of this component
         super(component, index)
 
-        if @isMounted()
+        if not @isMounted()
             component.mount()
+
+    detatch: (component) ->
+        # Detach a child component from this component
+        super(component)
+
+        if @isMounted()
+            component.unmount()
 
     show: () ->
         # Show the widget
@@ -207,7 +231,8 @@ class ContentTools.WidgetUI extends ContentTools.ComponentUI
             else
                 setTimeout(monitorForHidden, 250)
 
-        setTimeout(monitorForHidden, 250)
+        if @isMounted()
+            setTimeout(monitorForHidden, 250)
 
 
 class ContentTools.AnchoredComponentUI extends ContentTools.ComponentUI

@@ -34,6 +34,12 @@ class ContentTools.Tool
     @label = 'Tool'
     @icon = 'tool'
 
+    # Most tools require an element that they can be applied to, but there are
+    # exceptions (such as undo/redo). In these cases you can set the
+    # `requiresElement` flag to false so that the toolbox will not automatically
+    # disable the tool because there is not element focused.
+    @requiresElement = true
+
     # Class methods
 
     @canApply: (element, selection) ->
@@ -57,9 +63,9 @@ class ContentTools.Tool
         # specified element.
 
         insertNode = element
-        if insertNode.parent().constructor.name != 'Region'
+        if insertNode.parent().type() != 'Region'
             insertNode = element.closest (node) ->
-                return node.parent().constructor.name is 'Region'
+                return node.parent().type() is 'Region'
 
         insertIndex = insertNode.parent().children.indexOf(insertNode) + 1
 
@@ -117,6 +123,7 @@ class ContentTools.Tools.Bold extends ContentTools.Tool
                 new HTMLString.Tag(@tagName)
                 )
 
+        element.content.optimize()
         element.updateInnerHTML()
         element.taint()
 
@@ -146,18 +153,18 @@ class ContentTools.Tools.Link extends ContentTools.Tools.Bold
     @icon = 'link'
     @tagName = 'a'
 
-    @getHref: (element, selection) ->
-        # Get the existing href for the element and selection
+    @getAttr: (attrName, element, selection) ->
+        # Get an attribute for the element and selection
 
         # Images
-        if element.constructor.name == 'Image'
+        if element.type() is 'Image'
             if element.a
-                return element.a.href
+                return element.a[attrName]
 
         # Text
         else
             # Find the first character in the selected text that has an `a` tag
-            # and return its `href` value.
+            # and return the named attributes value.
             [from, to] = selection.get()
             selectedContent = element.content.slice(from, to)
             for c in selectedContent.characters
@@ -166,22 +173,37 @@ class ContentTools.Tools.Link extends ContentTools.Tools.Bold
 
                 for tag in c.tags()
                     if tag.name() == 'a'
-                        return tag.attr('href')
+                        return tag.attr(attrName)
 
         return ''
 
     @canApply: (element, selection) ->
         # Return true if the tool can be applied to the current
         # element/selection.
-        if element.constructor.name == 'Image'
+        if element.type() is 'Image'
             return true
         else
-            return super(element, selection)
+            # Must support content
+            unless element.content
+                return false
+
+            # A selection must exist
+            if not selection
+                return false
+
+            # If the selection is collapsed then it must be within an existing
+            # link.
+            if selection.isCollapsed()
+                character = element.content.characters[selection.get()[0]]
+                if not character or not character.hasTags('a')
+                    return false
+
+            return true
 
     @isApplied: (element, selection) ->
         # Return true if the tool is currently applied to the current
         # element/selection.
-        if element.constructor.name == 'Image'
+        if element.type() is 'Image'
             return element.a
         else
             return super(element, selection)
@@ -190,11 +212,30 @@ class ContentTools.Tools.Link extends ContentTools.Tools.Bold
         applied = false
 
         # Prepare text elements for adding a link
-        if element.constructor.name == 'Image'
+        if element.type() is 'Image'
             # Images
             rect = element.domElement().getBoundingClientRect()
 
         else
+            # If the selection is collapsed then we need to select the entire
+            # entire link.
+            if selection.isCollapsed()
+
+                # Find the bounds of the link
+                characters = element.content.characters
+                starts = selection.get(0)[0]
+                ends = starts
+
+                while starts > 0 and characters[starts - 1].hasTags('a')
+                    starts -= 1
+
+                while ends < characters.length and characters[ends].hasTags('a')
+                    ends += 1
+
+                # Select the link in full
+                selection = new ContentSelect.Range(starts, ends)
+                selection.select(element.domElement())
+
             # Text elements
             element.storeState()
 
@@ -218,7 +259,7 @@ class ContentTools.Tools.Link extends ContentTools.Tools.Bold
         modal = new ContentTools.ModalUI(transparent=true, allowScrolling=true)
 
         # When the modal is clicked on the dialog should close
-        modal.bind 'click', () ->
+        modal.addEventListener 'click', () ->
             @unmount()
             dialog.hide()
 
@@ -233,25 +274,62 @@ class ContentTools.Tools.Link extends ContentTools.Tools.Bold
             callback(applied)
 
         # Dialog
-        dialog = new ContentTools.LinkDialog(@getHref(element, selection))
+        dialog = new ContentTools.LinkDialog(
+            @getAttr('href', element, selection),
+            @getAttr('target', element, selection)
+            )
+
+        # Get the scroll position required for the dialog
+        [scrollX, scrollY] = ContentTools.getScrollPosition()
+
         dialog.position([
-            rect.left + (rect.width / 2) + window.scrollX,
-            rect.top + (rect.height / 2) + window.scrollY
+            rect.left + (rect.width / 2) + scrollX,
+            rect.top + (rect.height / 2) + scrollY
             ])
 
-        dialog.bind 'save', (href) ->
-            dialog.unbind('save')
+        dialog.addEventListener 'save', (ev) ->
+            detail = ev.detail()
 
             applied = true
 
             # Add the link
-            if element.constructor.name == 'Image'
+            if element.type() is 'Image'
 
                 # Images
-                if href
-                    element.a = {href: href}
+                #
+                # Note: When we add/remove links any alignment class needs to be
+                # moved to either the link (on adding a link) or the image (on
+                # removing a link). Alignment classes are mutually exclusive.
+                alignmentClassNames = [
+                    'align-center',
+                    'align-left',
+                    'align-right'
+                    ]
+
+                if detail.href
+                    element.a = {
+                        href: detail.href,
+                        target: if detail.target then detail.target else ''
+                        class: if element.a then element.a['class'] else ''
+                    }
+                    for className in alignmentClassNames
+                        if element.hasCSSClass(className)
+                            element.removeCSSClass(className)
+                            element.a['class'] = className
+                            break
+
                 else
+                    linkClasses = []
+                    if element.a['class']
+                        linkClasses = element.a['class'].split(' ')
+                    for className in alignmentClassNames
+                        if linkClasses.indexOf(className) > -1
+                            element.addCSSClass(className)
+                            break
                     element.a = null
+
+                element.unmount()
+                element.mount()
 
             else
                 # Text elements
@@ -260,15 +338,18 @@ class ContentTools.Tools.Link extends ContentTools.Tools.Bold
                 element.content = element.content.unformat(from, to, 'a')
 
                 # If specified add the new link
-                if href
-                    a = new HTMLString.Tag('a', {href: href})
+                if detail.href
+                    a = new HTMLString.Tag('a', detail)
                     element.content = element.content.format(from, to, a)
+                    element.content.optimize()
 
                 element.updateInnerHTML()
-                element.taint()
+
+            # Make sure the element is marked as tainted
+            element.taint()
 
             # Close the modal and dialog
-            modal.trigger('click')
+            modal.dispatchEvent(modal.createEvent('click'))
 
         app.attach(modal)
         app.attach(dialog)
@@ -291,7 +372,18 @@ class ContentTools.Tools.Heading extends ContentTools.Tool
         # element/selection.
 
         return element.content != undefined and
-                element.parent().constructor.name == 'Region'
+                ['Text', 'PreText'].indexOf(element.type()) != -1
+
+    @isApplied: (element, selection) ->
+        # Return true if the tool is currently applied to the current
+        # element/selection.
+        if not element.content
+            return false
+
+        if ['Text', 'PreText'].indexOf(element.type()) == -1
+            return false
+
+        return element.tagName() == @tagName
 
     @apply: (element, selection, callback) ->
         # Apply the tool to the current element
@@ -299,7 +391,7 @@ class ContentTools.Tools.Heading extends ContentTools.Tool
 
         # If the tag is a PreText tag then we need to handle the convert the
         # element not just the tag name.
-        if element.constructor.name == 'PreText'
+        if element.type() is 'PreText'
             # Convert the element to a Text element first
             content = element.content.html().replace(/&nbsp;/g, ' ')
             textElement = new ContentEdit.Text(@tagName, {}, content)
@@ -317,7 +409,14 @@ class ContentTools.Tools.Heading extends ContentTools.Tool
 
         else
             # Change the text elements tag name
-            element.tagName(@tagName)
+
+            # If the element already has the same tag name as the tool will
+            # apply revert the element to a paragraph.
+            if element.tagName() == @tagName
+                element.tagName('p')
+            else
+                element.tagName(@tagName)
+
             element.restoreState()
 
         callback(true)
@@ -329,7 +428,7 @@ class ContentTools.Tools.Subheading extends ContentTools.Tools.Heading
 
     ContentTools.ToolShelf.stow(@, 'subheading')
 
-    @label = 'Subeading'
+    @label = 'Subheading'
     @icon = 'subheading'
     @tagName = 'h2'
 
@@ -362,9 +461,9 @@ class ContentTools.Tools.Paragraph extends ContentTools.Tools.Heading
         else
             # If the element isn't a text element find the nearest top level
             # node and insert a new paragraph element after it.
-            if element.parent().constructor.name != 'Region'
+            if element.parent().type() != 'Region'
                 element = element.closest (node) ->
-                    return node.parent().constructor.name == 'Region'
+                    return node.parent().type() is 'Region'
 
             region = element.parent()
             paragraph = new ContentEdit.Text('p')
@@ -388,6 +487,12 @@ class ContentTools.Tools.Preformatted extends ContentTools.Tools.Heading
 
     @apply: (element, selection, callback) ->
         # Apply the tool to the current element
+
+        # If the element is already a PreText element then convert it to a
+        # paragraph instead.
+        if element.type() is 'PreText'
+            ContentTools.Tools.Paragraph.apply(element, selection, callback)
+            return
 
         # Escape the contents of the existing element
         text = element.content.text()
@@ -435,7 +540,7 @@ class ContentTools.Tools.AlignLeft extends ContentTools.Tool
 
         # List items and table cells use child nodes to manage their content
         # which don't support classes, so we need to check the parent.
-        if element.constructor.name in ['ListItemText', 'TableCellText']
+        if element.type() in ['ListItemText', 'TableCellText']
             element = element.parent()
 
         return element.hasCSSClass(@className)
@@ -445,11 +550,16 @@ class ContentTools.Tools.AlignLeft extends ContentTools.Tool
 
         # List items and table cells use child nodes to manage their content
         # which don't support classes, so we need to use the parent.
-        if element.constructor.name in ['ListItemText', 'TableCellText']
+        if element.type() in ['ListItemText', 'TableCellText']
             element = element.parent()
 
         # Remove any existing text alignment classes applied
-        for className in ['text-center', 'text-left', 'text-right']
+        alignmentClassNames = [
+            ContentTools.Tools.AlignLeft.className,
+            ContentTools.Tools.AlignCenter.className,
+            ContentTools.Tools.AlignRight.className
+            ]
+        for className in alignmentClassNames
             if element.hasCSSClass(className)
                 element.removeCSSClass(className)
 
@@ -500,16 +610,16 @@ class ContentTools.Tools.UnorderedList extends ContentTools.Tool
         # Return true if the tool can be applied to the current
         # element/selection.
         return element.content != undefined and
-                element.parent().constructor.name in ['Region', 'ListItem']
+                element.parent().type() in ['Region', 'ListItem']
 
     @apply: (element, selection, callback) ->
         # Apply the tool to the current element
-        if element.parent().constructor.name == 'ListItem'
+        if element.parent().type() is 'ListItem'
 
             # Find the parent list and change it to an unordered list
             element.storeState()
             list = element.closest (node) ->
-                return node.constructor.name == 'List'
+                return node.type() is 'List'
             list.tagName(@listTag)
             element.restoreState()
 
@@ -578,14 +688,13 @@ class ContentTools.Tools.Table extends ContentTools.Tool
 
         # If the element is part of a table find the parent table
         table = element.closest (node) ->
-            return node and node.constructor.name is 'Table'
+            return node and node.type() is 'Table'
 
         # Dialog
         dialog = new ContentTools.TableDialog(table)
 
         # Support cancelling the dialog
-        dialog.bind 'cancel', () =>
-            dialog.unbind('cancel')
+        dialog.addEventListener 'cancel', () =>
 
             modal.hide()
             dialog.hide()
@@ -596,8 +705,8 @@ class ContentTools.Tools.Table extends ContentTools.Tool
             callback(false)
 
         # Support saving the dialog
-        dialog.bind 'save', (tableCfg) =>
-            dialog.unbind('save')
+        dialog.addEventListener 'save', (ev) =>
+            tableCfg = ev.detail()
 
             # This flag indicates if we can restore the previous elements focus
             # and state or if we need to change the focus to the first cell in
@@ -611,7 +720,7 @@ class ContentTools.Tools.Table extends ContentTools.Tool
                 # Check if the current element is still part of the table after
                 # being updated.
                 keepFocus = element.closest (node) ->
-                    return node and node.constructor.name is 'Table'
+                    return node and node.type() is 'Table'
 
             else
                 # Create a new table
@@ -739,7 +848,7 @@ class ContentTools.Tools.Indent extends ContentTools.Tool
         # Return true if the tool can be applied to the current
         # element/selection.
 
-        return element.parent().constructor.name == 'ListItem' and
+        return element.parent().type() is 'ListItem' and
                 element.parent().parent().children.indexOf(element.parent()) > 0
 
     @apply: (element, selection, callback) ->
@@ -763,7 +872,7 @@ class ContentTools.Tools.Unindent extends ContentTools.Tool
     @canApply: (element, selection) ->
         # Return true if the tool can be applied to the current
         # element/selection.
-        return element.parent().constructor.name == 'ListItem'
+        return element.parent().type() is 'ListItem'
 
     @apply: (element, selection, callback) ->
         # Apply the tool to the current element
@@ -839,8 +948,7 @@ class ContentTools.Tools.Image extends ContentTools.Tool
         dialog = new ContentTools.ImageDialog()
 
         # Support cancelling the dialog
-        dialog.bind 'cancel', () =>
-            dialog.unbind('cancel')
+        dialog.addEventListener 'cancel', () =>
 
             modal.hide()
             dialog.hide()
@@ -851,8 +959,11 @@ class ContentTools.Tools.Image extends ContentTools.Tool
             callback(false)
 
         # Support saving the dialog
-        dialog.bind 'save', (imageURL, imageSize, imageAttrs) =>
-            dialog.unbind('save')
+        dialog.addEventListener 'save', (ev) =>
+            detail = ev.detail()
+            imageURL = detail.imageURL
+            imageSize = detail.imageSize
+            imageAttrs = detail.imageAttrs
 
             if not imageAttrs
                 imageAttrs = {}
@@ -914,8 +1025,7 @@ class ContentTools.Tools.Video extends ContentTools.Tool
         dialog = new ContentTools.VideoDialog()
 
         # Support cancelling the dialog
-        dialog.bind 'cancel', () =>
-            dialog.unbind('cancel')
+        dialog.addEventListener 'cancel', () =>
 
             modal.hide()
             dialog.hide()
@@ -926,16 +1036,16 @@ class ContentTools.Tools.Video extends ContentTools.Tool
             callback(false)
 
         # Support saving the dialog
-        dialog.bind 'save', (videoURL) =>
-            dialog.unbind('save')
+        dialog.addEventListener 'save', (ev) =>
+            url = ev.detail().url
 
-            if videoURL
+            if url
                 # Create the new video
                 video = new ContentEdit.Video(
                     'iframe', {
                         'frameborder': 0,
                         'height': ContentTools.DEFAULT_VIDEO_HEIGHT,
-                        'src': videoURL,
+                        'src': url,
                         'width': ContentTools.DEFAULT_VIDEO_WIDTH
                         })
 
@@ -954,7 +1064,7 @@ class ContentTools.Tools.Video extends ContentTools.Tool
             modal.hide()
             dialog.hide()
 
-            callback(videoURL != '')
+            callback(url != '')
 
         # Show the dialog
         app.attach(modal)
@@ -971,6 +1081,7 @@ class ContentTools.Tools.Undo extends ContentTools.Tool
 
     @label = 'Undo'
     @icon = 'undo'
+    @requiresElement = false
 
     @canApply: (element, selection) ->
         # Return true if the tool can be applied to the current
@@ -996,6 +1107,7 @@ class ContentTools.Tools.Redo extends ContentTools.Tool
 
     @label = 'Redo'
     @icon = 'redo'
+    @requiresElement = false
 
     @canApply: (element, selection) ->
         # Return true if the tool can be applied to the current
@@ -1035,13 +1147,26 @@ class ContentTools.Tools.Remove extends ContentTools.Tool
         # even when detached.
         element.blur()
 
+        # Focus on the next element
+        if element.nextContent()
+            element.nextContent().focus()
+        else if element.previousContent()
+            element.previousContent().focus()
+
+        # Check the element is still mounted (some elements may automatically
+        # remove themselves when they lose focus, for example empty text
+        # elements.
+        if not element.isMounted()
+            callback(true)
+            return
+
         # Remove the element
-        switch element.constructor.name
+        switch element.type()
             when 'ListItemText'
                 # Delete the associated list or list item
                 if app.ctrlDown()
                     list = element.closest (node) ->
-                        return node.parent().constructor.name == 'Region'
+                        return node.parent().type() is 'Region'
                     list.parent().detach(list)
                 else
                     element.parent().parent().detach(element.parent())
@@ -1050,7 +1175,7 @@ class ContentTools.Tools.Remove extends ContentTools.Tool
                 # Delete the associated table or table row
                 if app.ctrlDown()
                     table = element.closest (node) ->
-                        return node.constructor.name == 'Table'
+                        return node.type() is 'Table'
                     table.parent().detach(table)
                 else
                     row = element.parent().parent()

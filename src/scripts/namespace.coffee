@@ -5,6 +5,12 @@ window.ContentTools =
 
     # Global settings
 
+    # The message displayed to user's when we want them to confirm there changes
+    # are cancelled.
+    CANCEL_MESSAGE: '''
+        Your changes have not been saved, do you really want to lose them?
+        '''.trim()
+
     # The default tool configuration for the editor
     DEFAULT_TOOLS: [
         [
@@ -69,7 +75,11 @@ window.ContentTools =
     #
     # Attribute and tag names must be specified in lower case.
     #
+    # '*' is a special case tag name any attributes defined against it will  be
+    # restricted for all tags.
+    #
     RESTRICTED_ATTRIBUTES: {
+        '*': ['style'],
         'img': [
             'height',
             'src',
@@ -88,7 +98,8 @@ window.ContentTools =
         domains = {
             'www.youtube.com': 'youtube',
             'youtu.be': 'youtube',
-            'vimeo.com': 'vimeo'
+            'vimeo.com': 'vimeo',
+            'player.vimeo.com': 'vimeo'
             }
 
         # Parse the URL into components
@@ -107,7 +118,8 @@ window.ContentTools =
 
         for kv in paramsStr.split('&')
             kv = kv.split("=")
-            params[kv[0]] = kv[1]
+            if kv[0]
+                params[kv[0]] = kv[1]
 
         # Convert the URL to a valid embed URL
         switch domains[netloc]
@@ -116,6 +128,7 @@ window.ContentTools =
                     if not params['v']
                         return null
                     id = params['v']
+                    delete params['v']
 
                 else
                     m = path.match(/\/([A-Za-z0-9_-]+)$/i)
@@ -123,13 +136,61 @@ window.ContentTools =
                         return null
                     id = m[1]
 
-                return "https://www.youtube.com/embed/#{ id }"
+                url = "https://www.youtube.com/embed/#{ id }"
+
+                # Add back any parameters for the URL
+                paramStr = ("#{ k }=#{ v }" for k, v of params).join('&')
+                if paramStr
+                    url += "?#{ paramStr }"
+
+                return url
 
             when 'vimeo'
                 m = path.match(/\/(\w+\/\w+\/){0,1}(\d+)/i)
                 if not m
                     return null
 
-                return "https://player.vimeo.com/video/#{ m[2] }"
+                url = "https://player.vimeo.com/video/#{ m[2] }"
+
+                # Add back any parameters for the URL
+                paramStr = ("#{ k }=#{ v }" for k, v of params).join('&')
+                if paramStr
+                    url += "?#{ paramStr }"
+
+                return url
 
         return null
+
+    getRestrictedAtributes: (tagName) ->
+        # Return a list of restricted attributes for the given `tagName`. This
+        # will include restricted attributes defined against all tags using '*'
+        # as the tag name.
+        restricted = []
+        if ContentTools.RESTRICTED_ATTRIBUTES[tagName]
+            restricted = restricted.concat(
+                ContentTools.RESTRICTED_ATTRIBUTES[tagName]
+                )
+
+        if ContentTools.RESTRICTED_ATTRIBUTES['*']
+            restricted = restricted.concat(
+                ContentTools.RESTRICTED_ATTRIBUTES['*']
+                )
+
+        return restricted
+
+    getScrollPosition: () ->
+        # Return the current scroll position in a cross-browser compatible way
+        supportsPageOffset = window.pageXOffset != undefined
+        isCSS1Compat = (document.compatMode || 4) == 4
+
+        if supportsPageOffset
+            return [window.pageXOffset, window.pageYOffset]
+
+        else if isCSS1Compat
+            return [
+                document.documentElement.scrollLeft,
+                document.documentElement.scrollTop
+                ]
+
+        else
+            return [document.body.scrollLeft, document.body.scrollTop]

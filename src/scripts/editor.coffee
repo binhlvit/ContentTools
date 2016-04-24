@@ -10,7 +10,7 @@ class _EditorApp extends ContentTools.ComponentUI
         @history = null
 
         # The state of the app
-        @_state = ContentTools.EditorApp.DORMANT
+        @_state = 'dormant'
 
         # A map of editable regions (`ContentEdit.Region`) the editor will
         # manage.
@@ -19,10 +19,18 @@ class _EditorApp extends ContentTools.ComponentUI
         # A list of the mapped regions used to determine their order
         @_orderedRegions = null
 
+        # The last modified dates for the root node and regions
+        @_rootLastModified = null
+        @_regionsLastModified = {}
+
         # The UI widgets that form the editor's interface
         @_ignition = null
         @_inspector = null
         @_toolbox = null
+
+        # Flag used to indicate that for a temporary period the editor should
+        # allow empty regions to exist.
+        @_emptyRegionsAllowed = false
 
     # Read-only properties
 
@@ -32,6 +40,31 @@ class _EditorApp extends ContentTools.ComponentUI
     domRegions: () ->
         # Return a list of DOM nodes that are assigned as be editable regions
         return @_domRegions
+
+    getState: () ->
+        # Returns the current state of the editor (see `ContentTools.EditorApp`
+        # for information on possible editor states).
+        return @_state
+
+    ignition: () ->
+        # Return the ignition component for the editor
+        return @_ignition
+
+    inspector: () ->
+        # Return the inspector component for the editor
+        return @_inspector
+
+    isDormant: () ->
+        # Return true if the editor is currently in the dormant state
+        return @_state is 'dormant'
+
+    isReady: () ->
+        # Return true if the editor is currently in the ready state
+        return @_state is 'ready'
+
+    isEditing: () ->
+        # Return true if the editor is currently in the editing state
+        return @_state is 'editing'
 
     orderedRegions: () ->
         # Return a list of regions in the given order
@@ -44,6 +77,10 @@ class _EditorApp extends ContentTools.ComponentUI
     shiftDown: () ->
         return @_shiftDown
 
+    toolbox: () ->
+        # Return the toolbox component for the editor
+        return @_toolbox
+
     # Methods
 
     busy: (busy) ->
@@ -51,17 +88,25 @@ class _EditorApp extends ContentTools.ComponentUI
         # the ignition).
         return @_ignition.busy(busy)
 
-    init: (query, namingProp='id') ->
+    init: (queryOrDOMElements, namingProp='id') ->
         # Initialize the editor application
 
         # The property used to extract a name/key for a region
         @_namingProp = namingProp
 
-        # Select DOM elements that have been flagged as editable content
-        @_domRegions = document.querySelectorAll(query)
+        # Assign the DOM regions
+        if queryOrDOMElements.length > 0 and
+                queryOrDOMElements[0].nodeType is Node.ELEMENT_NODE
+            # If a list has been provided then assume it contains a list of DOM
+            # elements each of which is a region.
+            @_domRegions = queryOrDOMElements
+        else
+            # If a CSS query has been specified then use that to select the
+            # regions in the DOM.
+            @_domRegions = document.querySelectorAll(queryOrDOMElements)
 
         # If there aren't any editiable regions return early leaving the app
-        # DORMANT.
+        # dormant.
         if @_domRegions.length == 0
             return
 
@@ -72,23 +117,38 @@ class _EditorApp extends ContentTools.ComponentUI
         @_ignition = new ContentTools.IgnitionUI()
         @attach(@_ignition)
 
-        @_ignition.bind 'start', () =>
-            @start()
-
-        @_ignition.bind 'stop', (save) =>
-            if save
-                @save()
-            else
-                # If revert returns false then we cancel the stop action
-                if not @revert()
-                    # Reset the ignition state
-                    @_ignition.changeState('editing')
-                    return
-
-            @stop()
-
         if @_domRegions.length
             @_ignition.show()
+
+            # Set up events to allow the ignition switch to manage the editor
+            # state.
+            @_ignition.addEventListener 'edit', (ev) =>
+                ev.preventDefault()
+
+                # Start the editor and set the ignition switch to `editing`
+                @start()
+                @_ignition.state('editing')
+
+            @_ignition.addEventListener 'confirm', (ev) =>
+                ev.preventDefault()
+
+                # Stop the editor and request that changes are saved
+                @_ignition.state('ready')
+                @stop(true)
+
+            @_ignition.addEventListener 'cancel', (ev) =>
+                ev.preventDefault()
+
+                # Stop the editor and request that changes are reverted
+                @stop(false)
+
+                # Update the state of the ignition switch based on the outcome
+                # of the stop action (e.g whether the revert was actioned or
+                # cancelled).
+                if this.isEditing()
+                    @_ignition.state('editing')
+                else
+                    @_ignition.state('ready')
 
         # Toolbox
         @_toolbox = new ContentTools.ToolboxUI(ContentTools.DEFAULT_TOOLS)
@@ -99,20 +159,26 @@ class _EditorApp extends ContentTools.ComponentUI
         @attach(@_inspector)
 
         # Set as ready to edit
-        @_state = ContentTools.EditorApp.READY
+        @_state = 'ready'
 
-        # Check when elements are detached that the parent region is not empty
-        ContentEdit.Root.get().bind 'detach', (element) =>
+        @_handleDetach = (element) =>
             @_preventEmptyRegions()
 
-        # Monitor paste events so that we can pre-parse the content the user
-        # wants to paste into the region.
-        ContentEdit.Root.get().bind 'paste', (element, ev) =>
-            @paste(element, ev.clipboardData)
+        @_handleClipboardPaste = (element, ev) =>
+            # Get the clipboardData
+            clipboardData = null
 
-        # Manage the transition between regions
-        ContentEdit.Root.get().bind 'next-region', (region) =>
+            # Non-IE browsers
+            if ev.clipboardData
+              clipboardData = ev.clipboardData.getData('text/plain')
 
+            # IE browsers
+            if window.clipboardData
+              clipboardData = window.clipboardData.getData('TEXT')
+
+            @paste(element, clipboardData)
+
+        @_handleNextRegionTransition = (region) =>
             # Is there a next region?
             regions = @orderedRegions()
             index = regions.indexOf(region)
@@ -138,8 +204,7 @@ class _EditorApp extends ContentTools.ComponentUI
 
             ContentEdit.Root.get().trigger('next-region', region)
 
-        ContentEdit.Root.get().bind 'previous-region', (region) =>
-
+        @_handlePreviousRegionTransition = (region) =>
             # Is there a previous region?
             regions = @orderedRegions()
             index = regions.indexOf(region)
@@ -168,9 +233,36 @@ class _EditorApp extends ContentTools.ComponentUI
 
             ContentEdit.Root.get().trigger('previous-region', region)
 
+        # Check when elements are detached that the parent region is not empty
+        ContentEdit.Root.get().bind('detach', @_handleDetach)
+
+        # Monitor paste events so that we can pre-parse the content the user
+        # wants to paste into the region.
+        ContentEdit.Root.get().bind('paste', @_handleClipboardPaste)
+
+        # Manage the transition between regions
+        ContentEdit.Root.get().bind('next-region', @_handleNextRegionTransition)
+        ContentEdit.Root.get().bind(
+            'previous-region',
+            @_handlePreviousRegionTransition
+            )
 
     destroy: () ->
         # Destroy the editor application
+
+        # Remove any events bound to the ContentEdit Root
+        ContentEdit.Root.get().unbind('detach', @_handleDetach)
+        ContentEdit.Root.get().unbind('paste', @_handleClipboardPaste)
+        ContentEdit.Root.get().unbind(
+            'next-region',
+            @_handleNextRegionTransition
+            )
+        ContentEdit.Root.get().unbind(
+            'previous-region',
+            @_handlePreviousRegionTransition
+            )
+
+        # Unmount the editor
         @unmount()
 
     highlightRegions: (highlight) ->
@@ -183,15 +275,16 @@ class _EditorApp extends ContentTools.ComponentUI
 
     mount: () ->
         # Mount the widget to the DOM
-        @_domElement = @createDiv(['ct-app'])
+        @_domElement = @constructor.createDiv(['ct-app'])
         document.body.insertBefore(@_domElement, null)
         @_addDOMEventListeners()
 
     paste: (element, clipboardData) ->
         # Paste content into the given element
+        content = clipboardData
 
         # Extract the content of the clipboard
-        content = clipboardData.getData('text/plain')
+        # content = clipboardData.getData('text/plain')
 
         # Convert the content into a series of lines to be inserted
         lines = content.split('\n')
@@ -208,11 +301,11 @@ class _EditorApp extends ContentTools.ComponentUI
         # doesn't support text create new elements for each line of content.
         encodeHTML = HTMLString.String.encode
 
-        className = element.constructor.name
-        if (lines.length > 1 or not element.content) and className != 'PreText'
+        type = element.type()
+        if (lines.length > 1 or not element.content) and type != 'PreText'
 
             # Find the insertion point in the document
-            if className == 'ListItemText'
+            if type == 'ListItemText'
                 # If the element is a ListItem then we want to insert the lines
                 # as siblings.
                 insertNode = element.parent()
@@ -223,9 +316,9 @@ class _EditorApp extends ContentTools.ComponentUI
                 # For any other element type we want to insert the lines as
                 # paragraphs.
                 insertNode = element
-                if insertNode.parent().constructor.name != 'Region'
+                if insertNode.parent().type() != 'Region'
                     insertNode = element.closest (node) ->
-                        return node.parent().constructor.name is 'Region'
+                        return node.parent().type() is 'Region'
 
                 insertIn = insertNode.parent()
                 insertAt = insertIn.children.indexOf(insertNode) + 1
@@ -233,7 +326,7 @@ class _EditorApp extends ContentTools.ComponentUI
             # Insert each line as a paragraph
             for line, i in lines
                 line = encodeHTML(line)
-                if className == 'ListItemText'
+                if type == 'ListItemText'
                     item = new ContentEdit.ListItem()
                     itemText = new ContentEdit.ListItemText(line)
                     item.attach(itemText)
@@ -258,13 +351,30 @@ class _EditorApp extends ContentTools.ComponentUI
 
             # Convert the content to a HTMLString
             content = encodeHTML(content)
-            content = new HTMLString.String(content, className == 'PreText')
+            content = new HTMLString.String(content, type is 'PreText')
 
             # Insert the content into the element's existing content
             selection = element.selection()
             cursor = selection.get()[0] + content.length()
             tip = element.content.substring(0, selection.get()[0])
             tail = element.content.substring(selection.get()[1])
+
+            # Format the string using tags for the first character it is
+            # replacing (if any).
+            replaced = element.content.substring(
+                selection.get()[0],
+                selection.get()[1]
+                )
+            if replaced.length()
+                character = replaced.characters[0]
+                tags = character.tags()
+
+                if character.isTag()
+                    tags.shift()
+
+                if tags.length >= 1
+                    content = content.format(0, content.length(), tags...)
+
             element.content = tip.concat(content)
             element.content = element.content.concat(tail, false)
             element.updateInnerHTML()
@@ -278,11 +388,19 @@ class _EditorApp extends ContentTools.ComponentUI
 
     unmount: () ->
         # Unmount the widget from the DOM
+
+        # Check the editor is mounted
+        if not @isMounted()
+            return
+
+        # Remove the DOM element
         @_domElement.parentNode.removeChild(@_domElement)
         @_domElement = null
 
+        # Remove any DOM event bindings
         @_removeDOMEventListeners()
 
+        # Reset child component handles
         @_ignition = null
         @_inspector = null
         @_toolbox = null
@@ -292,11 +410,16 @@ class _EditorApp extends ContentTools.ComponentUI
     revert: () ->
         # Revert the page to it's previous state before we started editing
         # the page.
+        if not @dispatchEvent(@createEvent('revert'))
+            return
 
         # Check if there are any changes, and if there are make the user confirm
         # they want to lose them.
-        if ContentEdit.Root.get().lastModified() and not window.confirm(
-                ContentEdit._('Your changes have not been saved, do you really want to lose them?'))
+        confirmMessage = ContentEdit._(
+            'Your changes have not been saved, do you really want to lose them?'
+            )
+        if ContentEdit.Root.get().lastModified() > @_rootLastModified and
+                not window.confirm(confirmMessage)
             return false
 
         # Revert the page to it's initial state
@@ -311,10 +434,18 @@ class _EditorApp extends ContentTools.ComponentUI
         for name, region of @_regions
             # Apply the changes made to the DOM (affectively reseting the DOM to
             # a non-editable state).
+
+            # Unmount all children
+            for child in region.children
+                child.unmount()
+
             region.domElement().innerHTML = snapshot.regions[name]
 
         # Check to see if we need to restore the regions to an editable state
         if restoreEditable
+            # Unset any focused element against root
+            if ContentEdit.Root.get().focused()
+                ContentEdit.Root.get().focused().blur()
 
             # Reset the regions map
             @_regions = {}
@@ -332,11 +463,21 @@ class _EditorApp extends ContentTools.ComponentUI
             # Restore the selection for the snapshot
             @history.restoreSelection(snapshot)
 
-    save: (passive, args...) ->
+            # Update the inspector tags
+            @_inspector.updateTags()
+
+    save: (passive) ->
         # Save changes to the current page
+        if not @dispatchEvent(@createEvent('save', {passive: passive}))
+            return
 
         # Check the document has changed, if not we don't need do anything
-        if not ContentEdit.Root.get().lastModified() and passive
+        root = ContentEdit.Root.get()
+        if root.lastModified() == @_rootLastModified and passive
+            # Trigger the saved event early with no modified regions,
+            @dispatchEvent(
+                @createEvent('saved', {regions: {}, passive: passive})
+                )
             return
 
         # Build a map of the modified regions
@@ -349,16 +490,30 @@ class _EditorApp extends ContentTools.ComponentUI
                 if child.content and not child.content.html()
                     html = ''
 
+            # Apply the changes made to the DOM (affectively resetting the DOM
+            # to a non-editable state).
+            unless passive
+                # Unmount all children
+                for child in region.children
+                    child.unmount()
+
+                region.domElement().innerHTML = html
+
+            # Check the region has been modified, if not we don't include it in
+            # the output.
+            if region.lastModified() == @_regionsLastModified[name]
+                continue
+
             modifiedRegions[name] = html
 
-            # Apply the changes made to the DOM (affectively reseting the DOM to
-            # a non-editable state).
-            unless passive
-                region.domElement().innerHTML = modifiedRegions[name]
+            # Set the region back to not modified
+            @_regionsLastModified[name] = region.lastModified()
 
-        # Trigger the save event with a region HTML map for the changed
+        # Trigger the saved event with a region HTML map for the changed
         # content.
-        @trigger('save', modifiedRegions, args...)
+        @dispatchEvent(
+            @createEvent('saved', {regions: modifiedRegions, passive: passive})
+            )
 
     setRegionOrder: (regionNames) ->
         # Set the navigation order of regions on the page to the order set in
@@ -367,6 +522,8 @@ class _EditorApp extends ContentTools.ComponentUI
 
     start: () ->
         # Start editing the page
+        if not @dispatchEvent(@createEvent('start'))
+            return
 
         # Set the edtior to busy while we set up
         @busy(true)
@@ -381,18 +538,23 @@ class _EditorApp extends ContentTools.ComponentUI
             @_regions[name] = new ContentEdit.Region(domRegion)
             @_orderedRegions.push(name)
 
+            # Store the date at which the region was last modified so we can
+            # check for changes on save.
+            @_regionsLastModified[name] = @_regions[name].lastModified()
+
         # Ensure no region is empty
         @_preventEmptyRegions()
+
+        # Store the date at which the root was last modified so we can check for
+        # changes on save.
+        @_rootLastModified = ContentEdit.Root.get().lastModified()
 
         # Create a new history instance to store the page changes against
         @history = new ContentTools.History(@_regions)
         @history.watch()
 
         # Set the application state to editing
-        @_state = ContentTools.EditorApp.EDITING
-
-        # Mark the document as untainted
-        ContentEdit.Root.get().commit()
+        @_state = 'editing'
 
         # Display the editing tools
         @_toolbox.show()
@@ -400,12 +562,31 @@ class _EditorApp extends ContentTools.ComponentUI
 
         @busy(false)
 
-    stop: () ->
-        # Stop editing the page.
+    stop: (save) ->
+        # Stop editing the page
+        if not @dispatchEvent(@createEvent('stop', {save: save}))
+            return
 
-        # Blur any existing focused element
-        if ContentEdit.Root.get().focused()
-            ContentEdit.Root.get().focused().blur()
+        # HACK: We can't currently capture certain changes to text
+        # elements (for example deletion of a section of text from the
+        # context menu option). Long-term mutation observers or
+        # consistent support for the `input` event against
+        # `contenteditable` elements would resolve this.
+        #
+        # For now though we manually perform a content sync if an
+        # element supporting that method has focus.
+        focused = ContentEdit.Root.get().focused()
+        if focused and focused.isMounted() and
+                focused._syncContent != undefined
+
+            focused._syncContent()
+
+        if save
+            @save()
+        else
+            # If revert returns false then we cancel the stop action
+            if not @revert()
+                return
 
         # Clear history
         @history.stopWatching()
@@ -419,7 +600,14 @@ class _EditorApp extends ContentTools.ComponentUI
         @_regions = {}
 
         # Set the application state to ready to edit
-        @_state = ContentTools.EditorApp.READY
+        @_state = 'ready'
+
+        # Blur any existing focused element
+        if ContentEdit.Root.get().focused()
+            @_allowEmptyRegions () =>
+                ContentEdit.Root.get().focused().blur()
+
+        return
 
     # Private methods
 
@@ -432,13 +620,16 @@ class _EditorApp extends ContentTools.ComponentUI
         # In addition we monitor the Crtl/Meta and Shift key statuses so that
         # they can be tested independently of a ui event.
         @_handleHighlightOn = (ev) =>
-            clearTimeout(@_highlightTimeout)
-
             if ev.keyCode in [17, 224] # Ctrl/Cmd
                 @_ctrlDown = true
                 return
 
             if ev.keyCode is 16 # Shift
+                # Check for repeating key in which case we don't want to create
+                # additional timeouts.
+                if @_highlightTimeout
+                    return
+
                 @_shiftDown = true
                 @_highlightTimeout = setTimeout(
                     () => @highlightRegions(true),
@@ -446,7 +637,7 @@ class _EditorApp extends ContentTools.ComponentUI
                     )
 
         @_handleHighlightOff = (ev) =>
-
+            # Ignore repeated key press events
             if ev.keyCode in [17, 224] # Ctrl/Cmd
                 @_ctrlDown = false
                 return
@@ -455,6 +646,7 @@ class _EditorApp extends ContentTools.ComponentUI
                 @_shiftDown = false
                 if @_highlightTimeout
                     clearTimeout(@_highlightTimeout)
+                    @_highlightTimeout = null
                 @highlightRegions(false)
 
         document.addEventListener('keydown', @_handleHighlightOn)
@@ -463,27 +655,50 @@ class _EditorApp extends ContentTools.ComponentUI
         # When unloading the page we check to see if the user is currently
         # editing and if so ask them to confirm the action.
         window.onbeforeunload = (ev) =>
-            if @_state is ContentTools.EditorApp.EDITING
-                return ContentEdit._('Your changes have not been saved, do you really want to lose them?')
+            if @_state is 'editing'
+                return ContentEdit._(ContentTools.CANCEL_MESSAGE)
 
         # When the page is unloaded we destroy the app to make sure everything
         # is cleaned up.
         window.addEventListener 'unload', (ev) =>
             @destroy()
 
+    _allowEmptyRegions: (callback) ->
+        # Execute a function while allowing empty regions (e.g disabling the
+        # default `_preventEmptyRegions` behaviour).
+        @_emptyRegionsAllowed = true
+        callback()
+        @_emptyRegionsAllowed = false
+
     _preventEmptyRegions: () ->
         # Ensure no region is empty by inserting a placeholder <p> tag if
         # required.
+        if @_emptyRegionsAllowed
+            return
 
         # Check for any region that is now empty
         for name, region of @_regions
-            if region.children.length > 0
+            lastModified = region.lastModified()
+
+            # We have to check for elements that can receive focus as static
+            # elements alone don't allow new content to be added to a region.
+            hasEditableChildren = false
+            for child in region.children
+                if child.type() != 'Static'
+                    hasEditableChildren = true
+                    break
+
+            if hasEditableChildren
                 continue
 
             # Insert a placeholder text element to prevent the region from
             # becoming empty.
             placeholder = new ContentEdit.Text('p', {}, '')
             region.attach(placeholder)
+
+            # HACK: This action will mark the region as modified which it
+            # technically isn't and so we commit the change to nullify this.
+            region._modified = lastModified
 
     _removeDOMEventListeners: () ->
         # Remove DOM event listeners for the widget
@@ -501,10 +716,9 @@ class ContentTools.EditorApp
 
     # Constants
 
-    @DORMANT = 'dormant'
-    @READY = 'ready'
-    @EDITING = 'editing'
+    # A set of possible states for the editor.
 
+    # Storage for the singleton instance that will be created for the editor app
     instance = null
 
     @get: () ->

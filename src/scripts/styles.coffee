@@ -12,12 +12,13 @@ class ContentTools.StylePalette
         # Add a list of styles to the palette
         @_styles = @_styles.concat(styles)
 
-    @styles: (tagName) ->
+    @styles: (element) ->
         # Return the styles (optional only those applicable for the specified
         # tag name).
+        tagName = element.tagName()
 
-        # If no tag name is specified return a copy of the stlyes list
-        if tagName is undefined
+        # If no element is specified return a copy of the stlyes list
+        if element is undefined
             return @_styles.slice()
 
         # Filter the styles
@@ -41,8 +42,10 @@ class ContentTools.Style
         # The CSS class name
         @_cssClass = cssClass
 
-        # A list of tag names the style is applicable to, if not defined the
-        # style will be applicable to all elements.
+        # The `applicableTo` value by default will contain a list of class names
+        # the style can be applied to however if the `StylePalette.styles`
+        # method is overridden then the value of applicable to maybe any
+        # construct required to support the overridden styles method.
         if applicableTo
             @_applicableTo = applicableTo
         else

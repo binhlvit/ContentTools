@@ -22,7 +22,7 @@ class ContentTools.VideoDialog extends ContentTools.DialogUI
         ContentEdit.addCSSClass(@_domView, 'ct-video-dialog__preview')
 
         # Add controls
-        domControlGroup = @createDiv(['ct-control-group'])
+        domControlGroup = @constructor.createDiv(['ct-control-group'])
         @_domControls.appendChild(domControlGroup)
 
         # Input
@@ -37,7 +37,7 @@ class ContentTools.VideoDialog extends ContentTools.DialogUI
         domControlGroup.appendChild(@_domInput)
 
         # Insert button
-        @_domButton = @createDiv([
+        @_domButton = @constructor.createDiv([
             'ct-control',
             'ct-control--text',
             'ct-control--insert'
@@ -72,11 +72,11 @@ class ContentTools.VideoDialog extends ContentTools.DialogUI
         videoURL = @_domInput.value.trim()
         embedURL = ContentTools.getEmbedVideoURL(videoURL)
         if embedURL
-            @trigger('save', embedURL)
+            @dispatchEvent(@createEvent('save', {'url': embedURL}))
         else
             # If we can't generate an embed URL trust that the user's knows what
             # they are doing and save with the supplied URL.
-            @trigger('save', videoURL)
+            @dispatchEvent(@createEvent('save', {'url': videoURL}))
 
     show: () ->
         # Show the widget

@@ -16,7 +16,7 @@ module.exports = (grunt) ->
 
                         # UI
                         'src/scripts/ui/ui.coffee'
-                        'src/scripts/ui/dialogs.coffee'
+                        'src/scripts/ui/events.coffee'
                         'src/scripts/ui/flashes.coffee'
                         'src/scripts/ui/ignition.coffee'
                         'src/scripts/ui/inspector.coffee'
@@ -49,12 +49,30 @@ module.exports = (grunt) ->
                 files:
                     'spec/spec-helper.js': 'src/spec/spec-helper.coffee'
                     'spec/content-tools-spec.js': [
+                        'src/spec/namespace.coffee'
+
+                        # UI
+                        'src/spec/ui/ui.coffee'
+                        'src/spec/ui/events.coffee'
+                        'src/spec/ui/flashes.coffee'
+                        'src/spec/ui/ignition.coffee'
+                        'src/spec/ui/inspector.coffee'
+                        'src/spec/ui/modal.coffee'
+                        'src/spec/ui/toolbox.coffee'
+
+                        # UI - Dialogs
+                        'src/spec/ui/dialogs/dialogs.coffee'
+                        'src/spec/ui/dialogs/image.coffee'
+                        'src/spec/ui/dialogs/link.coffee'
+                        'src/spec/ui/dialogs/properties.coffee'
+                        'src/spec/ui/dialogs/table.coffee'
+                        'src/spec/ui/dialogs/video.coffee'
+
+                        # Other
+                        'src/spec/editor.coffee'
                         'src/spec/history.coffee'
-                        'src/spec/inspector.coffee'
-                        'src/spec/shortcuts.coffee'
                         'src/spec/tools.coffee'
                         'src/spec/styles.coffee'
-                        'src/spec/ui.coffee'
                         ]
 
         sass:
@@ -75,7 +93,7 @@ module.exports = (grunt) ->
         uglify:
             options:
                 banner: '/*! <%= pkg.name %> v<%= pkg.version %> by <%= pkg.author.name %> <<%= pkg.author.email %>> (<%= pkg.author.url %>) */\n'
-                mangle: false
+                mangle: true
 
             build:
                 src: 'build/content-tools.js'
@@ -91,6 +109,13 @@ module.exports = (grunt) ->
 
         clean:
             build: ['src/tmp']
+
+        jasmine:
+            build:
+                src: ['build/content-tools.js']
+                options:
+                    specs: 'spec/content-tools-spec.js'
+                    helpers: 'spec/spec-helper.js'
 
         watch:
             build:
@@ -108,7 +133,7 @@ module.exports = (grunt) ->
                 tasks: ['sandbox']
 
             spec:
-                files: ['src/spec/*.coffee']
+                files: ['src/spec/**/*.coffee']
                 tasks: ['spec']
     })
 
@@ -116,6 +141,7 @@ module.exports = (grunt) ->
     grunt.loadNpmTasks 'grunt-contrib-clean'
     grunt.loadNpmTasks 'grunt-contrib-coffee'
     grunt.loadNpmTasks 'grunt-contrib-concat'
+    grunt.loadNpmTasks 'grunt-contrib-jasmine'
     grunt.loadNpmTasks 'grunt-contrib-sass'
     grunt.loadNpmTasks 'grunt-contrib-uglify'
     grunt.loadNpmTasks 'grunt-contrib-watch'

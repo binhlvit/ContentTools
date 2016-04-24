@@ -51,61 +51,31 @@ class ContentTools.ToolboxUI extends ContentTools.WidgetUI
 
         super()
 
-    tools: (tools) ->
-        # Get/Set the tools that populate the toolbox
-        if tools is undefined
-            return @_tools
-
-        # Set the tools
-        @_tools = tools
-
-        # Remount the toolbox to reflect any changes
-        @unmount()
-        @mount()
-
     mount: () ->
         # Mount the widget to the DOM
 
         # Toolbox
-        @_domElement = @createDiv([
+        @_domElement = @constructor.createDiv([
             'ct-widget',
             'ct-toolbox'
             ])
         @parent().domElement().appendChild(@_domElement)
 
         # Grip
-        @_domGrip = @createDiv([
+        @_domGrip = @constructor.createDiv([
             'ct-toolbox__grip',
             'ct-grip'
             ])
         @_domElement.appendChild(@_domGrip)
 
-        @_domGrip.appendChild(@createDiv(['ct-grip__bump']))
-        @_domGrip.appendChild(@createDiv(['ct-grip__bump']))
-        @_domGrip.appendChild(@createDiv(['ct-grip__bump']))
+        @_domGrip.appendChild(@constructor.createDiv(['ct-grip__bump']))
+        @_domGrip.appendChild(@constructor.createDiv(['ct-grip__bump']))
+        @_domGrip.appendChild(@constructor.createDiv(['ct-grip__bump']))
 
         # Tools
-        for toolGroup, i in @_tools
-
-            # Create a group for the tools
-            domToolGroup = @createDiv(['ct-tool-group'])
-            @_domElement.appendChild(domToolGroup)
-
-            # Create an associated ToolUI compontent for each tool in the group
-            for toolName in toolGroup
-
-                # Get the tool
-                tool = ContentTools.ToolShelf.fetch(toolName)
-
-                # Create an associated ToolUI component and add it to the
-                # toolbox.
-                @_toolUIs[toolName] = new ContentTools.ToolUI(tool)
-                @_toolUIs[toolName].mount(domToolGroup)
-                @_toolUIs[toolName].disable()
-
-                # Whenever the tool is applied we'll want to force an update
-                @_toolUIs[toolName].bind 'apply', () =>
-                    @updateTools()
+        @_domToolGroups = @constructor.createDiv(['ct-tool-groups'])
+        @_domElement.appendChild(@_domToolGroups)
+        @tools(@_tools)
 
         # Restore the position of the element (if there's a restore set)
         restore = window.localStorage.getItem('ct-toolbox-position')
@@ -120,6 +90,50 @@ class ContentTools.ToolboxUI extends ContentTools.WidgetUI
 
         # Add interaction handlers
         @_addDOMEventListeners()
+
+    tools: (tools) ->
+        # Get/Set the tools that populate the toolbox
+        if tools is undefined
+            return @_tools
+
+        # Set the tools
+        @_tools = tools
+
+        # Only attempt to mount the tools if the toolbox itself is mounted
+        if not @isMounted()
+            return
+
+        # Clear existing tools
+        for toolName, toolUI of @_toolUIs
+            toolUI.unmount()
+        @_toolUIs = {}
+
+        # Remove tool groups
+        while @_domToolGroups.lastChild
+            @_domToolGroups.removeChild(@_domToolGroups.lastChild)
+
+        # Add the tools
+        for toolGroup, i in @_tools
+
+            # Create a group for the tools
+            domToolGroup = @constructor.createDiv(['ct-tool-group'])
+            @_domToolGroups.appendChild(domToolGroup)
+
+            # Create an associated ToolUI compontent for each tool in the group
+            for toolName in toolGroup
+
+                # Get the tool
+                tool = ContentTools.ToolShelf.fetch(toolName)
+
+                # Create an associated ToolUI component and add it to the
+                # toolbox.
+                @_toolUIs[toolName] = new ContentTools.ToolUI(tool)
+                @_toolUIs[toolName].mount(domToolGroup)
+                @_toolUIs[toolName].disabled(true)
+
+                # Whenever the tool is applied we'll want to force an update
+                @_toolUIs[toolName].addEventListener 'applied', () =>
+                    @updateTools()
 
     updateTools: () ->
         # Refresh all tool UIs in the toolbox
@@ -175,9 +189,12 @@ class ContentTools.ToolboxUI extends ContentTools.WidgetUI
             if element == @_lastUpdateElement
                 if element and element.selection
                     selection = element.selection()
-                    if @_lastUpdateSelection and
-                            selection.eq(@_lastUpdateSelection)
-                        # Not the same selection
+
+                    # Check the selection hasn't changed
+                    if @_lastUpdateSelection
+                        if not selection.eq(@_lastUpdateSelection)
+                            update = true
+                    else
                         update = true
 
             else
@@ -192,12 +209,20 @@ class ContentTools.ToolboxUI extends ContentTools.WidgetUI
                 # Remember the history length for next update
                 @_lastUpdateHistoryLength = app.history.length()
 
+                if @_lastUpdateHistoryIndex != app.history.index()
+                    update = true
+
+                # Remember the history index for next update
+                @_lastUpdateHistoryIndex = app.history.index()
+
             # Remember the element/section for next update
             @_lastUpdateElement = element
             @_lastUpdateSelection = selection
 
-            for name, toolUI of @_toolUIs
-                toolUI.update(element, selection)
+            # Only update the tools if we can detect something has changed
+            if update
+                for name, toolUI of @_toolUIs
+                    toolUI.update(element, selection)
 
         @_updateToolsTimeout = setInterval(@_updateTools, 100)
 
@@ -385,55 +410,53 @@ class ContentTools.ToolUI extends ContentTools.AnchoredComponentUI
         # Flag indicating if the tools is disabled
         @_disabled = false
 
-    # Read-only properties
-
-    disabled: () ->
-        # Return true if the element is current disabled
-        return @_disabled
-
     # Methods
 
-    apply: () ->
+    apply: (element, selection) ->
         # Apply the tool UIs associated tool
-        element = ContentEdit.Root.get().focused()
-        unless element and element.isMounted()
-            return
-
-        selection = null
-        if element.selection
-            selection = element.selection()
-
         unless @tool.canApply(element, selection)
             return
 
+        detail = {
+            'element': element,
+            'selection': selection
+            }
+
         callback = (applied) =>
             if applied
-                @trigger('apply')
+                @dispatchEvent(@createEvent('applied', detail))
 
-        @tool.apply(element, selection, callback)
+        if @dispatchEvent(@createEvent('apply', detail))
+            @tool.apply(element, selection, callback)
 
-    disable: () ->
-        # Disable the tool
-        if @_disabled
+    disabled: (disabledState) ->
+        # Get/Set the disabled state of the tool
+
+        # Return the current state if `disabledState` hasn't been provided
+        if disabledState == undefined
+            return @_disabled
+
+        # Set the state
+        if @_disabled == disabledState
             return
 
-        @_disabled = true
-        @_mouseDown = false
-        @addCSSClass('ct-tool--disabled')
-        @removeCSSClass('ct-tool--applied')
+        # Set the disabled state
+        @_disabled = disabledState
 
-    enable: () ->
-        # Enable the tool
-        if not @_disabled
-            return
+        if disabledState
+            # Disable the tool
+            @_mouseDown = false
+            @addCSSClass('ct-tool--disabled')
+            @removeCSSClass('ct-tool--applied')
 
-        @_disabled = false
-        @removeCSSClass('ct-tool--disabled')
+        else
+            # Enable the tool
+            @removeCSSClass('ct-tool--disabled')
 
     mount: (domParent, before=null) ->
         # Mount the component to the DOM
 
-        @_domElement = @createDiv([
+        @_domElement = @constructor.createDiv([
             'ct-tool',
             "ct-tool--#{ @tool.icon }"
             ])
@@ -447,16 +470,20 @@ class ContentTools.ToolUI extends ContentTools.AnchoredComponentUI
         # Update the state of the tool based on the current element and
         # selection.
 
-        # If there's no element selected then the tool is disabled
-        if not (element and element.isMounted())
-            @disable()
-            return
+        # Most elements are automatically disabled if there is no element
+        # however some tools such as redo/undo don't require an element to be
+        # applied.
+        if @tool.requiresElement
+            # If there's no element selected then the tool is disabled
+            if not (element and element.isMounted())
+                @disabled(true)
+                return
 
         # Check if the tool can be applied
         if @tool.canApply(element, selection)
-            @enable()
+            @disabled(false)
         else
-            @disable()
+            @disabled(true)
             return
 
         # Check of the tool is already being applied
@@ -489,16 +516,29 @@ class ContentTools.ToolUI extends ContentTools.AnchoredComponentUI
         @_mouseDown = true
         @addCSSClass('ct-tool--down')
 
-    _onMouseLeave: () =>
+    _onMouseLeave: (ev) =>
         # Cursor has left the tool so remove flag indicating the mouse is down
         # over the tool.
         @_mouseDown = false
         @removeCSSClass('ct-tool--down')
 
-    _onMouseUp: () =>
+    _onMouseUp: (ev) =>
         # If a click event has occured exectute the tool
         if @_mouseDown
-            @apply()
+            element = ContentEdit.Root.get().focused()
+
+            # Most elements are automatically disabled if there is no element
+            # however some tools such as redo/undo don't require an element to
+            # be applied.
+            if @tool.requiresElement
+                unless element and element.isMounted()
+                    return
+
+            selection = null
+            if element and element.selection
+                selection = element.selection()
+
+            @apply(element, selection)
 
         # Reset the mouse down flag
         @_mouseDown = false

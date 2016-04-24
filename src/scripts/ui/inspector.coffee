@@ -14,14 +14,11 @@ class ContentTools.InspectorUI extends ContentTools.WidgetUI
         # Mount the widget to the DOM
 
         # Inspector
-        @_domElement = @createDiv([
-            'ct-widget',
-            'ct-inspector'
-            ])
+        @_domElement = @constructor.createDiv(['ct-widget', 'ct-inspector'])
         @parent().domElement().appendChild(@_domElement)
 
         # Tags
-        @_domTags = @createDiv([
+        @_domTags = @constructor.createDiv([
             'ct-inspector__tags',
             'ct-tags'
             ])
@@ -34,13 +31,13 @@ class ContentTools.InspectorUI extends ContentTools.WidgetUI
         @_handleFocusChange = () =>
             @updateTags()
 
-        ContentEdit.Root.get().bind 'blur', @_handleFocusChange
-        ContentEdit.Root.get().bind 'focus', @_handleFocusChange
+        ContentEdit.Root.get().bind('blur', @_handleFocusChange)
+        ContentEdit.Root.get().bind('focus', @_handleFocusChange)
 
         # We use mount here to catch instances where the tag name is changed, in
         # which case the focus wont be affected but the element will be
         # remounted in the DOM.
-        ContentEdit.Root.get().bind 'mount', @_handleFocusChange
+        ContentEdit.Root.get().bind('mount', @_handleFocusChange)
 
     unmount: () ->
         # Unmount the widget from the DOM
@@ -49,9 +46,9 @@ class ContentTools.InspectorUI extends ContentTools.WidgetUI
         @_domTags = null
 
         # Remove listeners for the inspector
-        ContentEdit.Root.get().unbind 'blur', @_handleFocusChange
-        ContentEdit.Root.get().unbind 'focus', @_handleFocusChange
-        ContentEdit.Root.get().unbind 'mount', @_handleFocusChange
+        ContentEdit.Root.get().unbind('blur', @_handleFocusChange)
+        ContentEdit.Root.get().unbind('focus', @_handleFocusChange)
+        ContentEdit.Root.get().unbind('mount', @_handleFocusChange)
 
     updateTags: () ->
         # Update the tags based on the current selection
@@ -60,6 +57,8 @@ class ContentTools.InspectorUI extends ContentTools.WidgetUI
         # Clear the current list of tags
         for tag in @_tagUIs
             tag.unmount()
+
+        @_tagUIs = []
 
         # If there's no element selected we're done
         if not element
@@ -75,7 +74,7 @@ class ContentTools.InspectorUI extends ContentTools.WidgetUI
             # Certain tags are ignored as attributes cannot be safely set
             # against them.
             if ContentTools.INSPECTOR_IGNORED_ELEMENTS.indexOf(
-                    element.constructor.name) != -1
+                    element.type()) != -1
                 continue
 
             # Convert each element to a UI tag
@@ -97,7 +96,7 @@ class ContentTools.TagUI extends ContentTools.AnchoredComponentUI
     mount: (domParent, before=null) ->
         # Mount the component to the DOM
 
-        @_domElement = @createDiv(['ct-tag'])
+        @_domElement = @constructor.createDiv(['ct-tag'])
         @_domElement.textContent = @element.tagName()
 
         super(domParent, before)
@@ -130,9 +129,7 @@ class ContentTools.TagUI extends ContentTools.AnchoredComponentUI
         dialog = new ContentTools.PropertiesDialog(@element)
 
         # Support cancelling the dialog
-        dialog.bind 'cancel', () =>
-            dialog.unbind('cancel')
-
+        dialog.addEventListener 'cancel', () =>
             modal.hide()
             dialog.hide()
 
@@ -140,8 +137,11 @@ class ContentTools.TagUI extends ContentTools.AnchoredComponentUI
                 @element.restoreState()
 
         # Support saving the dialog
-        dialog.bind 'save', (attributes, styles, innerHTML) =>
-            dialog.unbind('save')
+        dialog.addEventListener 'save', (ev) =>
+            detail = ev.detail()
+            attributes = detail.changedAttributes
+            styles = detail.changedStyles
+            innerHTML = detail.innerHTML
 
             # Apply the attribute changes
             for name, value of attributes

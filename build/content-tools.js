@@ -84,7 +84,7 @@
 }).call(this);
 
 (function() {
-  var ALPHA_CHARS, ALPHA_NUMERIC_CHARS, ATTR_DELIM, ATTR_ENTITY_DOUBLE_DELIM, ATTR_ENTITY_NO_DELIM, ATTR_ENTITY_SINGLE_DELIM, ATTR_NAME, ATTR_NAME_FIND_VALUE, ATTR_OR_TAG_END, ATTR_VALUE_DOUBLE_DELIM, ATTR_VALUE_NO_DELIM, ATTR_VALUE_SINGLE_DELIM, CHAR_OR_ENTITY_OR_TAG, CLOSING_TAG, ENTITY, ENTITY_CHARS, OPENING_TAG, OPENNING_OR_CLOSING_TAG, TAG_NAME_CLOSING, TAG_NAME_MUST_CLOSE, TAG_NAME_OPENING, TAG_OPENING_SELF_CLOSING, _Parser,
+  var ALPHA_CHARS, ALPHA_NUMERIC_CHARS, ATTR_DELIM, ATTR_ENTITY_DOUBLE_DELIM, ATTR_ENTITY_NO_DELIM, ATTR_ENTITY_SINGLE_DELIM, ATTR_NAME, ATTR_NAME_CHARS, ATTR_NAME_FIND_VALUE, ATTR_OR_TAG_END, ATTR_VALUE_DOUBLE_DELIM, ATTR_VALUE_NO_DELIM, ATTR_VALUE_SINGLE_DELIM, CHAR_OR_ENTITY_OR_TAG, CLOSING_TAG, ENTITY, ENTITY_CHARS, OPENING_TAG, OPENNING_OR_CLOSING_TAG, TAG_NAME_CHARS, TAG_NAME_CLOSING, TAG_NAME_MUST_CLOSE, TAG_NAME_OPENING, TAG_OPENING_SELF_CLOSING, _Parser,
     __slice = [].slice,
     __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
 
@@ -290,13 +290,16 @@
         for (_l = 0, _len3 = _ref2.length; _l < _len3; _l++) {
           tag = _ref2[_l];
           if (openHeads.indexOf(tag.head()) === -1) {
-            head = tag.head();
-            html += head;
             if (!tag.selfClosing()) {
+              head = tag.head();
+              html += head;
               openTags.push(tag);
               openHeads.push(head);
             }
           }
+        }
+        if (c._tags.length > 0 && c._tags[0].selfClosing()) {
+          html += c._tags[0].head();
         }
         html += c.c();
       }
@@ -309,7 +312,7 @@
     };
 
     String.prototype.indexOf = function(substring, from) {
-      var c, found, i, skip, _i, _j, _len, _len1, _ref;
+      var c, found, i, _i, _len, _ref;
       if (from == null) {
         from = 0;
       }
@@ -317,34 +320,12 @@
         from = 0;
       }
       if (typeof substring === 'string') {
-        if (!this.contains(substring)) {
-          return -1;
-        }
-        substring = substring.split('');
-        while (from <= (this.length() - substring.length)) {
-          found = true;
-          skip = 0;
-          for (i = _i = 0, _len = substring.length; _i < _len; i = ++_i) {
-            c = substring[i];
-            if (this.characters[i + from].isTag()) {
-              skip += 1;
-            }
-            if (c !== this.characters[skip + i + from].c()) {
-              found = false;
-              break;
-            }
-          }
-          if (found) {
-            return from;
-          }
-          from++;
-        }
-        return -1;
+        return this.text().indexOf(substring, from);
       }
       while (from <= (this.length() - substring.length())) {
         found = true;
         _ref = substring.characters;
-        for (i = _j = 0, _len1 = _ref.length; _j < _len1; i = ++_j) {
+        for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
           c = _ref[i];
           if (!c.eq(this.characters[i + from])) {
             found = false;
@@ -808,7 +789,11 @@
 
   ALPHA_NUMERIC_CHARS = ALPHA_CHARS.concat('1234567890'.split(''));
 
+  ATTR_NAME_CHARS = ALPHA_NUMERIC_CHARS.concat([':']);
+
   ENTITY_CHARS = ALPHA_NUMERIC_CHARS.concat(['#']);
+
+  TAG_NAME_CHARS = ALPHA_NUMERIC_CHARS.concat([':']);
 
   CHAR_OR_ENTITY_OR_TAG = 1;
 
@@ -877,7 +862,7 @@
       this.fsm.addTransitions(ALPHA_CHARS, CLOSING_TAG, TAG_NAME_CLOSING, function() {
         return this._back();
       });
-      this.fsm.addTransitions(ALPHA_NUMERIC_CHARS, TAG_NAME_OPENING, null, function(c) {
+      this.fsm.addTransitions(TAG_NAME_CHARS, TAG_NAME_OPENING, null, function(c) {
         return this.tagName += c;
       });
       this.fsm.addTransitions([' ', '\n'], TAG_NAME_OPENING, ATTR_OR_TAG_END);
@@ -901,7 +886,7 @@
       this.fsm.addTransitions(ALPHA_CHARS, ATTR_OR_TAG_END, ATTR_NAME, function() {
         return this._back();
       });
-      this.fsm.addTransitions(ALPHA_NUMERIC_CHARS, TAG_NAME_CLOSING, null, function(c) {
+      this.fsm.addTransitions(TAG_NAME_CHARS, TAG_NAME_CLOSING, null, function(c) {
         return this.tagName += c;
       });
       this.fsm.addTransitions([' ', '\n'], TAG_NAME_CLOSING, TAG_NAME_MUST_CLOSE);
@@ -912,7 +897,7 @@
       this.fsm.addTransition('>', TAG_NAME_MUST_CLOSE, CHAR_OR_ENTITY_OR_TAG, function() {
         return this._popTag();
       });
-      this.fsm.addTransitions(ALPHA_NUMERIC_CHARS, ATTR_NAME, null, function(c) {
+      this.fsm.addTransitions(ATTR_NAME_CHARS, ATTR_NAME, null, function(c) {
         return this.attributeName += c;
       });
       this.fsm.addTransitions([' ', '\n'], ATTR_NAME, ATTR_NAME_FIND_VALUE);
@@ -1020,7 +1005,7 @@
       }
       this.tagName = '';
       this.selfClosed = false;
-      return this.attributes = [];
+      return this.attributes = {};
     };
 
     _Parser.prototype._popTag = function() {
@@ -1029,7 +1014,7 @@
         tag = this.tags.pop();
         if (this.string.length()) {
           character = this.string.characters[this.string.length() - 1];
-          if (!character.isTag() && character.isWhitespace()) {
+          if (!character.isTag() && !character.isEntity() && character.isWhitespace()) {
             character.removeTags(tag);
           }
         }
@@ -1061,7 +1046,7 @@
 
     _Parser.prototype.preprocess = function(html) {
       html = html.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-      html = html.replace(/<!--[\s\S]-->/g, '');
+      html = html.replace(/<!--[\s\S]*?-->/g, '');
       if (!this._preserveWhitespace) {
         html = html.replace(/\s+/g, ' ');
       }
@@ -1325,7 +1310,6 @@
   })();
 
 }).call(this);
-
 (function() {
   var SELF_CLOSING_NODE_NAMES, _containedBy, _getChildNodeAndOffset, _getNodeRange, _getOffsetOfChildNode,
     __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; };
@@ -1358,13 +1342,15 @@
     };
 
     Range.prototype.select = function(element) {
-      var docRange, endNode, endOffset, startNode, startOffset, _ref, _ref1;
+      var docRange, endNode, endNodeLen, endOffset, startNode, startNodeLen, startOffset, _ref, _ref1;
       ContentSelect.Range.unselectAll();
       docRange = document.createRange();
       _ref = _getChildNodeAndOffset(element, this._from), startNode = _ref[0], startOffset = _ref[1];
       _ref1 = _getChildNodeAndOffset(element, this._to), endNode = _ref1[0], endOffset = _ref1[1];
-      docRange.setStart(startNode, startOffset);
-      docRange.setEnd(endNode, endOffset);
+      startNodeLen = startNode.length || 0;
+      endNodeLen = endNode.length || 0;
+      docRange.setStart(startNode, Math.min(startOffset, startNodeLen));
+      docRange.setEnd(endNode, Math.min(endOffset, endNodeLen));
       return window.getSelection().addRange(docRange);
     };
 
@@ -1615,7 +1601,7 @@
 }).call(this);
 
 (function() {
-  var C, _Root, _TagNames, _mergers,
+  var _Root, _TagNames, _mergers,
     __slice = [].slice,
     __indexOf = [].indexOf || function(item) { for (var i = 0, l = this.length; i < l; i++) { if (i in this && this[i] === item) return i; } return -1; },
     __hasProp = {}.hasOwnProperty,
@@ -1623,6 +1609,10 @@
     __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
 
   window.ContentEdit = {
+    ALIGNMENT_CLASS_NAMES: {
+      'left': 'align-left',
+      'right': 'align-right'
+    },
     DEFAULT_MAX_ELEMENT_WIDTH: 800,
     DEFAULT_MIN_ELEMENT_WIDTH: 80,
     DRAG_HOLD_DURATION: 500,
@@ -1630,6 +1620,7 @@
     HELPER_CHAR_LIMIT: 250,
     INDENT: '    ',
     LANGUAGE: 'en',
+    PREFER_LINE_BREAKS: false,
     RESIZE_CORNER_SIZE: 15,
     _translations: {},
     _: function(s) {
@@ -1689,6 +1680,8 @@
         if (value === '') {
           attributeStrings.push(name);
         } else {
+          value = HTMLString.String.encode(value);
+          value = value.replace(/"/g, '&quot;');
           attributeStrings.push("" + name + "=\"" + value + "\"");
         }
       }
@@ -1724,29 +1717,9 @@
             return domElement.removeAttribute('class');
           }
         }
-      } else {
-        return domElement.setAttribute('class', className);
       }
     }
   };
-
-  if (!(C = (function() {
-    function C() {}
-
-    return C;
-
-  })()).name) {
-    Object.defineProperty(Function.prototype, 'name', {
-      get: function() {
-        var name;
-        name = this.toString().match(/^\s*function\s*(\S*)\s*\(/)[1];
-        Object.defineProperty(this, 'name', {
-          value: name
-        });
-        return name;
-      }
-    });
-  }
 
   _TagNames = (function() {
     function _TagNames() {
@@ -1814,6 +1787,10 @@
         parent = parent._parent;
       }
       return parents;
+    };
+
+    Node.prototype.type = function() {
+      return 'Node';
     };
 
     Node.prototype.html = function(indent) {
@@ -2049,6 +2026,10 @@
       return false;
     };
 
+    NodeCollection.prototype.type = function() {
+      return 'NodeCollection';
+    };
+
     NodeCollection.prototype.attach = function(node, index) {
       if (node.parent()) {
         node.parent().detach(node);
@@ -2104,6 +2085,14 @@
       this._tagName = tagName.toLowerCase();
       this._attributes = attributes ? attributes : {};
       this._domElement = null;
+      this._behaviours = {
+        drag: true,
+        drop: true,
+        merge: true,
+        remove: true,
+        resize: true,
+        spawn: true
+      };
     }
 
     Element.prototype.attributes = function() {
@@ -2125,12 +2114,20 @@
       return this._domElement;
     };
 
+    Element.prototype.isFixed = function() {
+      return this.parent() && this.parent().type() === 'Fixture';
+    };
+
     Element.prototype.isFocused = function() {
       return ContentEdit.Root.get().focused() === this;
     };
 
     Element.prototype.isMounted = function() {
       return this._domElement !== null;
+    };
+
+    Element.prototype.type = function() {
+      return 'Element';
     };
 
     Element.prototype.typeName = function() {
@@ -2176,6 +2173,13 @@
       }
     };
 
+    Element.prototype.can = function(behaviour, allowed) {
+      if (allowed === void 0) {
+        return (!this.isFixed()) && this._behaviours[behaviour];
+      }
+      return this._behaviours[behaviour] = allowed;
+    };
+
     Element.prototype.createDraggingDOMElement = function() {
       var helper;
       if (!this.isMounted()) {
@@ -2183,29 +2187,41 @@
       }
       helper = document.createElement('div');
       helper.setAttribute('class', "ce-drag-helper ce-drag-helper--type-" + (this.cssTypeName()));
-      console.log(this.typeName(), ContentEdit._(this.typeName()));
       helper.setAttribute('data-ce-type', ContentEdit._(this.typeName()));
       return helper;
     };
 
     Element.prototype.drag = function(x, y) {
-      if (!this.isMounted()) {
+      var root;
+      if (!(this.isMounted() && this.can('drag'))) {
         return;
       }
-      return ContentEdit.Root.get().startDragging(this, x, y);
+      root = ContentEdit.Root.get();
+      root.startDragging(this, x, y);
+      return root.trigger('drag', this);
     };
 
     Element.prototype.drop = function(element, placement) {
+      var root;
+      if (!this.can('drop')) {
+        return;
+      }
+      root = ContentEdit.Root.get();
       if (element) {
         element._removeCSSClass('ce-element--drop');
         element._removeCSSClass("ce-element--drop-" + placement[0]);
         element._removeCSSClass("ce-element--drop-" + placement[1]);
-        if (this.constructor.droppers[element.constructor.name]) {
-          return this.constructor.droppers[element.constructor.name](this, element, placement);
-        } else if (element.constructor.droppers[this.constructor.name]) {
-          return element.constructor.droppers[this.constructor.name](this, element, placement);
+        if (this.constructor.droppers[element.type()]) {
+          this.constructor.droppers[element.type()](this, element, placement);
+          root.trigger('drop', this, element, placement);
+          return;
+        } else if (element.constructor.droppers[this.type()]) {
+          element.constructor.droppers[this.type()](this, element, placement);
+          root.trigger('drop', this, element, placement);
+          return;
         }
       }
+      return root.trigger('drop', this, null, null);
     };
 
     Element.prototype.focus = function(supressDOMFocus) {
@@ -2246,10 +2262,13 @@
     };
 
     Element.prototype.merge = function(element) {
-      if (this.constructor.mergers[element.constructor.name]) {
-        return this.constructor.mergers[element.constructor.name](element, this);
-      } else if (element.constructor.mergers[this.constructor.name]) {
-        return element.constructor.mergers[this.constructor.name](element, this);
+      if (!(this.can('merge') && this.can('remove'))) {
+        return false;
+      }
+      if (this.constructor.mergers[element.type()]) {
+        return this.constructor.mergers[element.type()](element, this);
+      } else if (element.constructor.mergers[this.type()]) {
+        return element.constructor.mergers[this.type()](element, this);
       }
     };
 
@@ -2262,7 +2281,12 @@
       if (sibling) {
         this.parent().domElement().insertBefore(this._domElement, sibling.domElement());
       } else {
-        this.parent().domElement().appendChild(this._domElement);
+        if (this.isFixed()) {
+          this.parent().domElement().parentNode.replaceChild(this._domElement, this.parent().domElement());
+          this.parent()._domElement = this._domElement;
+        } else {
+          this.parent().domElement().appendChild(this._domElement);
+        }
       }
       this._addDOMEventListeners();
       this._addCSSClass('ce-element');
@@ -2326,6 +2350,9 @@
     };
 
     Element.prototype.unmount = function() {
+      if (this.isFixed()) {
+        return;
+      }
       this._removeDOMEventListeners();
       if (this._domElement.parentNode) {
         this._domElement.parentNode.removeChild(this._domElement);
@@ -2384,9 +2411,19 @@
           }
         };
       })(this));
-      return this._domElement.addEventListener('paste', (function(_this) {
+      this._domElement.addEventListener('paste', (function(_this) {
         return function(ev) {
           return _this._onPaste(ev);
+        };
+      })(this));
+      this._domElement.addEventListener('dragover', (function(_this) {
+        return function(ev) {
+          return ev.preventDefault();
+        };
+      })(this));
+      return this._domElement.addEventListener('drop', (function(_this) {
+        return function(ev) {
+          return _this._onNativeDrop(ev);
         };
       })(this));
     };
@@ -2401,26 +2438,12 @@
       }
     };
 
-    Element.prototype._onMouseMove = function(ev) {};
+    Element.prototype._onMouseMove = function(ev) {
+      return this._onOver(ev);
+    };
 
     Element.prototype._onMouseOver = function(ev) {
-      var dragging, root;
-      this._addCSSClass('ce-element--over');
-      root = ContentEdit.Root.get();
-      dragging = root.dragging();
-      if (!dragging) {
-        return;
-      }
-      if (dragging === this) {
-        return;
-      }
-      if (root._dropTarget) {
-        return;
-      }
-      if (this.constructor.droppers[dragging.constructor.name] || dragging.constructor.droppers[this.constructor.name]) {
-        this._addCSSClass('ce-element--drop');
-        return root._dropTarget = this;
-      }
+      return this._onOver(ev);
     };
 
     Element.prototype._onMouseOut = function(ev) {
@@ -2441,10 +2464,40 @@
 
     Element.prototype._onMouseUp = function(ev) {};
 
+    Element.prototype._onNativeDrop = function(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      return ContentEdit.Root.get().trigger('native-drop', this, ev);
+    };
+
     Element.prototype._onPaste = function(ev) {
       ev.preventDefault();
       ev.stopPropagation();
       return ContentEdit.Root.get().trigger('paste', this, ev);
+    };
+
+    Element.prototype._onOver = function(ev) {
+      var dragging, root;
+      this._addCSSClass('ce-element--over');
+      root = ContentEdit.Root.get();
+      dragging = root.dragging();
+      if (!dragging) {
+        return;
+      }
+      if (dragging === this) {
+        return;
+      }
+      if (root._dropTarget) {
+        return;
+      }
+      if (!this.can('drop')) {
+        return;
+      }
+      if (!(this.constructor.droppers[dragging.type()] || dragging.constructor.droppers[this.type()])) {
+        return;
+      }
+      this._addCSSClass('ce-element--drop');
+      return root._dropTarget = this;
     };
 
     Element.prototype._removeDOMEventListeners = function() {};
@@ -2501,21 +2554,23 @@
     };
 
     Element._dropBoth = function(element, target, placement) {
-      var aClassNames, className, insertIndex, _i, _len, _ref;
+      var aClassNames, alignLeft, alignRight, className, insertIndex, _i, _len, _ref;
       element.parent().detach(element);
       insertIndex = target.parent().children.indexOf(target);
       if (placement[0] === 'below' && placement[1] === 'center') {
         insertIndex += 1;
       }
+      alignLeft = ContentEdit.ALIGNMENT_CLASS_NAMES['left'];
+      alignRight = ContentEdit.ALIGNMENT_CLASS_NAMES['right'];
       if (element.a) {
-        element._removeCSSClass('align-left');
-        element._removeCSSClass('align-right');
+        element._removeCSSClass(alignLeft);
+        element._removeCSSClass(alignRight);
         if (element.a['class']) {
           aClassNames = [];
           _ref = element.a['class'].split(' ');
           for (_i = 0, _len = _ref.length; _i < _len; _i++) {
             className = _ref[_i];
-            if (className === 'align-left' || className === 'align-right') {
+            if (className === alignLeft || className === alignRight) {
               continue;
             }
             aClassNames.push(className);
@@ -2527,31 +2582,31 @@
           }
         }
       } else {
-        element.removeCSSClass('align-left');
-        element.removeCSSClass('align-right');
+        element.removeCSSClass(alignLeft);
+        element.removeCSSClass(alignRight);
       }
       if (placement[1] === 'left') {
         if (element.a) {
           if (element.a['class']) {
-            element.a['class'] += ' align-left';
+            element.a['class'] += ' ' + alignLeft;
           } else {
-            element.a['class'] = 'align-left';
+            element.a['class'] = alignLeft;
           }
-          element._addCSSClass('align-left');
+          element._addCSSClass(alignLeft);
         } else {
-          element.addCSSClass('align-left');
+          element.addCSSClass(alignLeft);
         }
       }
       if (placement[1] === 'right') {
         if (element.a) {
           if (element.a['class']) {
-            element.a['class'] += ' align-right';
+            element.a['class'] += ' ' + alignRight;
           } else {
-            element.a['class'] = 'align-right';
+            element.a['class'] = alignRight;
           }
-          element._addCSSClass('align-right');
+          element._addCSSClass(alignRight);
         } else {
-          element.addCSSClass('align-right');
+          element.addCSSClass(alignRight);
         }
       }
       return target.parent().attach(element, insertIndex);
@@ -2577,6 +2632,10 @@
 
     ElementCollection.prototype.isMounted = function() {
       return this._domElement !== null;
+    };
+
+    ElementCollection.prototype.type = function() {
+      return 'ElementCollection';
     };
 
     ElementCollection.prototype.createDraggingDOMElement = function() {
@@ -2687,13 +2746,17 @@
       return [minWidth, minWidth * this.aspectRatio()];
     };
 
+    ResizableElement.prototype.type = function() {
+      return 'ResizableElement';
+    };
+
     ResizableElement.prototype.mount = function() {
       ResizableElement.__super__.mount.call(this);
       return this._domElement.setAttribute('data-ce-size', this._getSizeInfo());
     };
 
     ResizableElement.prototype.resize = function(corner, x, y) {
-      if (!this.isMounted()) {
+      if (!(this.isMounted() && this.can('resize'))) {
         return;
       }
       return ContentEdit.Root.get().startResizing(this, corner, x, y, true);
@@ -2725,7 +2788,7 @@
 
     ResizableElement.prototype._onMouseDown = function(ev) {
       var corner;
-      ResizableElement.__super__._onMouseDown.call(this);
+      ResizableElement.__super__._onMouseDown.call(this, ev);
       corner = this._getResizeCorner(ev.clientX, ev.clientY);
       if (corner) {
         return this.resize(corner, ev.clientX, ev.clientY);
@@ -2742,6 +2805,9 @@
     ResizableElement.prototype._onMouseMove = function(ev) {
       var corner;
       ResizableElement.__super__._onMouseMove.call(this);
+      if (!this.can('resize')) {
+        return;
+      }
       this._removeCSSClass('ce-element--resize-top-left');
       this._removeCSSClass('ce-element--resize-top-right');
       this._removeCSSClass('ce-element--resize-bottom-left');
@@ -2835,6 +2901,7 @@
         if (element) {
           this.attach(element);
         }
+        ContentEdit.Root.get().trigger('ready', this);
       }
     }
 
@@ -2844,6 +2911,10 @@
 
     Region.prototype.isMounted = function() {
       return true;
+    };
+
+    Region.prototype.type = function() {
+      return 'Region';
     };
 
     Region.prototype.html = function(indent) {
@@ -2864,6 +2935,59 @@
     };
 
     return Region;
+
+  })(ContentEdit.NodeCollection);
+
+  ContentEdit.Fixture = (function(_super) {
+    __extends(Fixture, _super);
+
+    function Fixture(domElement) {
+      var cls, element, tagNames;
+      Fixture.__super__.constructor.call(this);
+      this._domElement = domElement;
+      tagNames = ContentEdit.TagNames.get();
+      if (this._domElement.getAttribute("data-ce-tag")) {
+        cls = tagNames.match(this._domElement.getAttribute("data-ce-tag"));
+      } else {
+        cls = tagNames.match(this._domElement.tagName);
+      }
+      element = cls.fromDOMElement(this._domElement);
+      this.children = [element];
+      element._parent = this;
+      element.mount();
+      ContentEdit.Root.get().trigger('ready', this);
+    }
+
+    Fixture.prototype.domElement = function() {
+      return this._domElement;
+    };
+
+    Fixture.prototype.isMounted = function() {
+      return true;
+    };
+
+    Fixture.prototype.type = function() {
+      return 'Fixture';
+    };
+
+    Fixture.prototype.html = function(indent) {
+      var c;
+      if (indent == null) {
+        indent = '';
+      }
+      return ((function() {
+        var _i, _len, _ref, _results;
+        _ref = this.children;
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          c = _ref[_i];
+          _results.push(c.html(indent));
+        }
+        return _results;
+      }).call(this)).join('\n').trim();
+    };
+
+    return Fixture;
 
   })(ContentEdit.NodeCollection);
 
@@ -2898,6 +3022,10 @@
 
     _Root.prototype.resizing = function() {
       return this._resizing;
+    };
+
+    _Root.prototype.type = function() {
+      return 'Root';
     };
 
     _Root.prototype.cancelDragging = function() {
@@ -3062,13 +3190,34 @@
       return 'static';
     };
 
+    Static.prototype.type = function() {
+      return 'Static';
+    };
+
     Static.prototype.typeName = function() {
       return 'Static';
+    };
+
+    Static.prototype.createDraggingDOMElement = function() {
+      var helper, text;
+      if (!this.isMounted()) {
+        return;
+      }
+      helper = Static.__super__.createDraggingDOMElement.call(this);
+      text = this._domElement.textContent;
+      if (text.length > ContentEdit.HELPER_CHAR_LIMIT) {
+        text = text.substr(0, ContentEdit.HELPER_CHAR_LIMIT);
+      }
+      helper.innerHTML = text;
+      return helper;
     };
 
     Static.prototype.html = function(indent) {
       if (indent == null) {
         indent = '';
+      }
+      if (HTMLString.Tag.SELF_CLOSING[this._tagName]) {
+        return "" + indent + "<" + this._tagName + (this._attributesToString()) + ">";
       }
       return ("" + indent + "<" + this._tagName + (this._attributesToString()) + ">") + ("" + this._content) + ("" + indent + "</" + this._tagName + ">");
     };
@@ -3089,9 +3238,32 @@
 
     Static.prototype.focus = void 0;
 
+    Static.prototype._onMouseDown = function(ev) {
+      Static.__super__._onMouseDown.call(this, ev);
+      if (this.attr('data-ce-moveable') !== void 0) {
+        clearTimeout(this._dragTimeout);
+        return this._dragTimeout = setTimeout((function(_this) {
+          return function() {
+            return _this.drag(ev.pageX, ev.pageY);
+          };
+        })(this), 150);
+      }
+    };
+
     Static.prototype._onMouseOver = function(ev) {
       Static.__super__._onMouseOver.call(this, ev);
       return this._removeCSSClass('ce-element--over');
+    };
+
+    Static.prototype._onMouseUp = function(ev) {
+      Static.__super__._onMouseUp.call(this, ev);
+      if (this._dragTimeout) {
+        return clearTimeout(this._dragTimeout);
+      }
+    };
+
+    Static.droppers = {
+      'Static': ContentEdit.Element._dropVert
     };
 
     Static.fromDOMElement = function(domElement) {
@@ -3120,17 +3292,29 @@
       return 'text';
     };
 
+    Text.prototype.type = function() {
+      return 'Text';
+    };
+
     Text.prototype.typeName = function() {
       return 'Text';
     };
 
     Text.prototype.blur = function() {
-      if (this.content.isWhitespace()) {
+      var error;
+      if (this.isMounted()) {
+        this._syncContent();
+      }
+      if (this.content.isWhitespace() && this.can('remove')) {
         if (this.parent()) {
           this.parent().detach(this);
         }
       } else if (this.isMounted()) {
-        this._domElement.blur();
+        try {
+          this._domElement.blur();
+        } catch (_error) {
+          error = _error;
+        }
         this._domElement.removeAttribute('contenteditable');
       }
       return Text.__super__.blur.call(this);
@@ -3142,7 +3326,7 @@
         return;
       }
       helper = Text.__super__.createDraggingDOMElement.call(this);
-      text = this._domElement.textContent;
+      text = HTMLString.String.encode(this._domElement.textContent);
       if (text.length > ContentEdit.HELPER_CHAR_LIMIT) {
         text = text.substr(0, ContentEdit.HELPER_CHAR_LIMIT);
       }
@@ -3174,7 +3358,7 @@
         indent = '';
       }
       if (!this._lastCached || this._lastCached < this._modified) {
-        content = this.content.copy();
+        content = this.content.copy().trim();
         content.optimize();
         this._lastCached = Date.now();
         this._cached = content.html();
@@ -3204,6 +3388,9 @@
       }
       this._domElement.setAttribute('contenteditable', '');
       this._addCSSClass('ce-element--focused');
+      if (document.activeElement !== this.domElement()) {
+        this.domElement().focus();
+      }
       this._savedSelection.select(this._domElement);
       return this._savedSelection = void 0;
     };
@@ -3254,45 +3441,46 @@
     };
 
     Text.prototype._onKeyUp = function(ev) {
-      var newSnaphot, snapshot;
-      snapshot = this.content.html();
-      this.content = new HTMLString.String(this._domElement.innerHTML, this.content.preserveWhitespace());
-      newSnaphot = this.content.html();
-      if (snapshot !== newSnaphot) {
-        this.taint();
-      }
-      return this._flagIfEmpty();
+      Text.__super__._onKeyUp.call(this, ev);
+      return this._syncContent();
     };
 
     Text.prototype._onMouseDown = function(ev) {
-      Text.__super__._onMouseDown.call(this);
+      Text.__super__._onMouseDown.call(this, ev);
       clearTimeout(this._dragTimeout);
-      return this._dragTimeout = setTimeout((function(_this) {
+      this._dragTimeout = setTimeout((function(_this) {
         return function() {
           return _this.drag(ev.pageX, ev.pageY);
         };
       })(this), ContentEdit.DRAG_HOLD_DURATION);
+      if (this.content.length() === 0 && ContentEdit.Root.get().focused() === this) {
+        ev.preventDefault();
+        if (document.activeElement !== this._domElement) {
+          this._domElement.focus();
+        }
+        return new ContentSelect.Range(0, 0).select(this._domElement);
+      }
     };
 
     Text.prototype._onMouseMove = function(ev) {
       if (this._dragTimeout) {
         clearTimeout(this._dragTimeout);
       }
-      return Text.__super__._onMouseMove.call(this);
+      return Text.__super__._onMouseMove.call(this, ev);
     };
 
     Text.prototype._onMouseOut = function(ev) {
       if (this._dragTimeout) {
         clearTimeout(this._dragTimeout);
       }
-      return Text.__super__._onMouseOut.call(this);
+      return Text.__super__._onMouseOut.call(this, ev);
     };
 
     Text.prototype._onMouseUp = function(ev) {
       if (this._dragTimeout) {
         clearTimeout(this._dragTimeout);
       }
-      return Text.__super__._onMouseUp.call(this);
+      return Text.__super__._onMouseUp.call(this, ev);
     };
 
     Text.prototype._keyBack = function(ev) {
@@ -3303,6 +3491,7 @@
       }
       ev.preventDefault();
       previous = this.previousContent();
+      this._syncContent();
       if (previous) {
         return previous.merge(this);
       }
@@ -3339,13 +3528,13 @@
         return selection.select(previous.domElement());
       } else {
         return ContentEdit.Root.get().trigger('previous-region', this.closest(function(node) {
-          return node.constructor.name === 'Region';
+          return node.type() === 'Region';
         }));
       }
     };
 
     Text.prototype._keyReturn = function(ev) {
-      var element, selection, tail, tip;
+      var element, insertAt, lineBreakStr, selection, tail, tip;
       ev.preventDefault();
       if (this.content.isWhitespace()) {
         return;
@@ -3354,6 +3543,24 @@
       selection = ContentSelect.Range.query(this._domElement);
       tip = this.content.substring(0, selection.get()[0]);
       tail = this.content.substring(selection.get()[1]);
+      if (ev.shiftKey ^ ContentEdit.PREFER_LINE_BREAKS) {
+        insertAt = selection.get()[0];
+        lineBreakStr = '<br>';
+        if (this.content.length() === insertAt) {
+          if (!this.content.characters[insertAt - 1].isTag('br')) {
+            lineBreakStr = '<br><br>';
+          }
+        }
+        this.content = this.content.insert(insertAt, new HTMLString.String(lineBreakStr, true), true);
+        this.updateInnerHTML();
+        insertAt += 1;
+        selection = new ContentSelect.Range(insertAt, insertAt);
+        selection.select(this.domElement());
+        return;
+      }
+      if (!this.can('spawn')) {
+        return;
+      }
       this.content = tip.trim();
       this.updateInnerHTML();
       element = new this.constructor('p', {}, tail.trim());
@@ -3383,7 +3590,7 @@
         return selection.select(next.domElement());
       } else {
         return ContentEdit.Root.get().trigger('next-region', this.closest(function(node) {
-          return node.constructor.name === 'Region';
+          return node.type() === 'Region';
         }));
       }
     };
@@ -3397,12 +3604,7 @@
     };
 
     Text.prototype._atEnd = function(selection) {
-      var atEnd;
-      atEnd = selection.get()[0] === this.content.length();
-      if (selection.get()[0] === this.content.length() - 1 && this.content.characters[this.content.characters.length - 1].isTag('br')) {
-        atEnd = true;
-      }
-      return atEnd;
+      return selection.get()[0] >= this.content.length();
     };
 
     Text.prototype._flagIfEmpty = function() {
@@ -3411,6 +3613,17 @@
       } else {
         return this._removeCSSClass('ce-element--empty');
       }
+    };
+
+    Text.prototype._syncContent = function(ev) {
+      var newSnapshot, snapshot;
+      snapshot = this.content.html();
+      this.content = new HTMLString.String(this._domElement.innerHTML, this.content.preserveWhitespace());
+      newSnapshot = this.content.html();
+      if (snapshot !== newSnapshot) {
+        this.taint();
+      }
+      return this._flagIfEmpty();
     };
 
     Text.droppers = {
@@ -3426,7 +3639,7 @@
           target.content = target.content.concat(element.content);
         }
         if (target.isMounted()) {
-          target._domElement.innerHTML = target.content.html();
+          target.updateInnerHTML();
         }
         target.focus();
         new ContentSelect.Range(offset, offset).select(target._domElement);
@@ -3463,8 +3676,19 @@
       return 'pre-text';
     };
 
+    PreText.prototype.type = function() {
+      return 'PreText';
+    };
+
     PreText.prototype.typeName = function() {
       return 'Preformatted';
+    };
+
+    PreText.prototype.blur = function() {
+      if (this.isMounted()) {
+        this._domElement.innerHTML = this.content.html();
+      }
+      return PreText.__super__.blur.call(this);
     };
 
     PreText.prototype.html = function(indent) {
@@ -3479,6 +3703,39 @@
         this._cached = content.html();
       }
       return ("" + indent + "<" + this._tagName + (this._attributesToString()) + ">") + ("" + this._cached + "</" + this._tagName + ">");
+    };
+
+    PreText.prototype.updateInnerHTML = function() {
+      var html;
+      html = this.content.html();
+      this._domElement.innerHTML = html;
+      this._ensureEndZWS();
+      ContentSelect.Range.prepareElement(this._domElement);
+      return this._flagIfEmpty();
+    };
+
+    PreText.prototype._onKeyUp = function(ev) {
+      var html, newSnaphot, snapshot;
+      this._ensureEndZWS();
+      snapshot = this.content.html();
+      html = this._domElement.innerHTML;
+      html = html.replace(/\u200B$/g, '');
+      this.content = new HTMLString.String(html, this.content.preserveWhitespace());
+      newSnaphot = this.content.html();
+      if (snapshot !== newSnaphot) {
+        this.taint();
+      }
+      return this._flagIfEmpty();
+    };
+
+    PreText.prototype._keyBack = function(ev) {
+      var selection;
+      selection = ContentSelect.Range.query(this._domElement);
+      if (selection.get()[0] <= this.content.length()) {
+        return PreText.__super__._keyBack.call(this, ev);
+      }
+      selection.set(this.content.length(), this.content.length());
+      return selection.select(this._domElement);
     };
 
     PreText.prototype._keyReturn = function(ev) {
@@ -3502,6 +3759,18 @@
       selection.set(cursor, cursor);
       selection.select(this._domElement);
       return this.taint();
+    };
+
+    PreText.prototype._ensureEndZWS = function() {
+      if (!this._domElement.lastChild) {
+        return;
+      }
+      if (this._domElement.innerHTML[this._domElement.innerHTML.length - 1] === '\u200B') {
+        return;
+      }
+      this.storeState();
+      this._domElement.lastChild.textContent += '\u200B';
+      return this.restoreState();
     };
 
     PreText.droppers = {
@@ -3537,6 +3806,10 @@
       return 'image';
     };
 
+    Image.prototype.type = function() {
+      return 'Image';
+    };
+
     Image.prototype.typeName = function() {
       return 'Image';
     };
@@ -3567,13 +3840,16 @@
     };
 
     Image.prototype.mount = function() {
-      var style;
+      var classes, style;
       this._domElement = document.createElement('div');
+      classes = '';
       if (this.a && this.a['class']) {
-        this._domElement.setAttribute('class', this.a['class']);
-      } else if (this._attributes['class']) {
-        this._domElement.setAttribute('class', this._attributes['class']);
+        classes += ' ' + this.a['class'];
       }
+      if (this._attributes['class']) {
+        classes += ' ' + this._attributes['class'];
+      }
+      this._domElement.setAttribute('class', classes);
       style = this._attributes['style'] ? this._attributes['style'] : '';
       style += "background-image:url(" + this._attributes['src'] + ");";
       if (this._attributes['width']) {
@@ -3663,6 +3939,10 @@
       return 'video';
     };
 
+    Video.prototype.type = function() {
+      return 'Video';
+    };
+
     Video.prototype.typeName = function() {
       return 'Video';
     };
@@ -3680,8 +3960,8 @@
       if (!src) {
         src = 'No video source set';
       }
-      if (src.length > ContentEdit.HELPER_CHAR_LIMIT) {
-        src = text.substr(0, ContentEdit.HELPER_CHAR_LIMIT);
+      if (src.length > 80) {
+        src = src.substr(0, 80) + '...';
       }
       return src;
     };
@@ -3784,12 +4064,16 @@
       return 'list';
     };
 
+    List.prototype.type = function() {
+      return 'List';
+    };
+
     List.prototype.typeName = function() {
       return 'List';
     };
 
     List.prototype._onMouseOver = function(ev) {
-      if (this.parent().constructor.name === 'ListItem') {
+      if (this.parent().type() === 'ListItem') {
         return;
       }
       List.__super__._onMouseOver.call(this, ev);
@@ -3845,6 +4129,7 @@
 
     function ListItem(attributes) {
       ListItem.__super__.constructor.call(this, 'li', attributes);
+      this._behaviours['indent'] = true;
     }
 
     ListItem.prototype.cssTypeName = function() {
@@ -3865,6 +4150,10 @@
       return null;
     };
 
+    ListItem.prototype.type = function() {
+      return 'ListItem';
+    };
+
     ListItem.prototype.html = function(indent) {
       var lines;
       if (indent == null) {
@@ -3883,6 +4172,9 @@
 
     ListItem.prototype.indent = function() {
       var sibling;
+      if (!this.can('indent')) {
+        return;
+      }
       if (this.parent().children.indexOf(this) === 0) {
         return;
       }
@@ -3915,10 +4207,13 @@
 
     ListItem.prototype.unindent = function() {
       var child, grandParent, i, itemIndex, list, parent, parentIndex, selection, sibling, siblings, text, _i, _j, _k, _l, _len, _len1, _len2, _len3, _ref, _ref1;
+      if (!this.can('indent')) {
+        return;
+      }
       parent = this.parent();
       grandParent = parent.parent();
       siblings = parent.children.slice(parent.children.indexOf(this) + 1, parent.children.length);
-      if (grandParent.constructor.name === 'ListItem') {
+      if (grandParent.type() === 'ListItem') {
         this.listItemText().storeState();
         parent.detach(this);
         grandParent.parent().attach(this, grandParent.parent().children.indexOf(grandParent) + 1);
@@ -4053,12 +4348,16 @@
       return 'list-item-text';
     };
 
+    ListItemText.prototype.type = function() {
+      return 'ListItemText';
+    };
+
     ListItemText.prototype.typeName = function() {
       return 'List item';
     };
 
     ListItemText.prototype.blur = function() {
-      if (this.content.isWhitespace()) {
+      if (this.content.isWhitespace() && this.can('remove')) {
         this.parent().remove();
       } else if (this.isMounted()) {
         this._domElement.blur();
@@ -4067,13 +4366,20 @@
       return ContentEdit.Element.prototype.blur.call(this);
     };
 
+    ListItemText.prototype.can = function(behaviour, allowed) {
+      if (allowed) {
+        throw new Error('Cannot set behaviour for ListItemText');
+      }
+      return this.parent().can(behaviour);
+    };
+
     ListItemText.prototype.html = function(indent) {
       var content;
       if (indent == null) {
         indent = '';
       }
       if (!this._lastCached || this._lastCached < this._modified) {
-        content = this.content.copy();
+        content = this.content.copy().trim();
         content.optimize();
         this._lastCached = Date.now();
         this._cached = content.html();
@@ -4090,7 +4396,7 @@
           if (ContentEdit.Root.get().dragging() === _this) {
             ContentEdit.Root.get().cancelDragging();
             listRoot = _this.closest(function(node) {
-              return node.parent().constructor.name === 'Region';
+              return node.parent().type() === 'Region';
             });
             return listRoot.drag(ev.pageX, ev.pageY);
           } else {
@@ -4131,6 +4437,9 @@
       ev.preventDefault();
       if (this.content.isWhitespace()) {
         this.parent().unindent();
+        return;
+      }
+      if (!this.can('spawn')) {
         return;
       }
       ContentSelect.Range.query(this._domElement);
@@ -4185,7 +4494,7 @@
       },
       'Text': function(element, target, placement) {
         var cssClass, insertIndex, listItem, targetParent, text;
-        if (element.constructor.name === 'Text') {
+        if (element.type() === 'Text') {
           targetParent = target.parent();
           element.parent().detach(element);
           cssClass = element.attr('class');
@@ -4237,7 +4546,7 @@
         }
         target.focus();
         new ContentSelect.Range(offset, offset).select(target._domElement);
-        if (element.constructor.name === 'Text') {
+        if (element.type() === 'Text') {
           if (element.parent()) {
             element.parent().detach(element);
           }
@@ -4268,6 +4577,10 @@
     };
 
     Table.prototype.typeName = function() {
+      return 'Table';
+    };
+
+    Table.prototype.type = function() {
       return 'Table';
     };
 
@@ -4400,6 +4713,10 @@
       return 'table-section';
     };
 
+    TableSection.prototype.type = function() {
+      return 'TableSection';
+    };
+
     TableSection.prototype._onMouseOver = function(ev) {
       TableSection.__super__._onMouseOver.call(this, ev);
       return this._removeCSSClass('ce-element--over');
@@ -4444,6 +4761,23 @@
 
     TableRow.prototype.cssTypeName = function() {
       return 'table-row';
+    };
+
+    TableRow.prototype.isEmpty = function() {
+      var cell, text, _i, _len, _ref;
+      _ref = this.children;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        cell = _ref[_i];
+        text = cell.tableCellText();
+        if (text && text.content.length() > 0) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    TableRow.prototype.type = function() {
+      return 'TableRow';
     };
 
     TableRow.prototype.typeName = function() {
@@ -4508,6 +4842,10 @@
       return null;
     };
 
+    TableCell.prototype.type = function() {
+      return 'TableCell';
+    };
+
     TableCell.prototype.html = function(indent) {
       var lines;
       if (indent == null) {
@@ -4553,6 +4891,10 @@
       return 'table-cell-text';
     };
 
+    TableCellText.prototype.type = function() {
+      return 'TableCellText';
+    };
+
     TableCellText.prototype._isInFirstRow = function() {
       var cell, row, section, table;
       cell = this.parent();
@@ -4596,13 +4938,20 @@
       return ContentEdit.Element.prototype.blur.call(this);
     };
 
+    TableCellText.prototype.can = function(behaviour, allowed) {
+      if (allowed) {
+        throw new Error('Cannot set behaviour for ListItemText');
+      }
+      return this.parent().can(behaviour);
+    };
+
     TableCellText.prototype.html = function(indent) {
       var content;
       if (indent == null) {
         indent = '';
       }
       if (!this._lastCached || this._lastCached < this._modified) {
-        content = this.content.copy();
+        content = this.content.copy().trim();
         content.optimize();
         this._lastCached = Date.now();
         this._cached = content.html();
@@ -4631,30 +4980,81 @@
       return this._dragTimeout = setTimeout(initDrag, ContentEdit.DRAG_HOLD_DURATION);
     };
 
+    TableCellText.prototype._keyBack = function(ev) {
+      var cell, previous, row, selection;
+      selection = ContentSelect.Range.query(this._domElement);
+      if (!(selection.get()[0] === 0 && selection.isCollapsed())) {
+        return;
+      }
+      ev.preventDefault();
+      cell = this.parent();
+      row = cell.parent();
+      if (!(row.isEmpty() && row.can('remove'))) {
+        return;
+      }
+      if (this.content.length() === 0 && row.children.indexOf(cell) === 0) {
+        previous = this.previousContent();
+        if (previous) {
+          previous.focus();
+          selection = new ContentSelect.Range(previous.content.length(), previous.content.length());
+          selection.select(previous.domElement());
+        }
+        return row.parent().detach(row);
+      }
+    };
+
+    TableCellText.prototype._keyDelete = function(ev) {
+      var lastChild, nextElement, row, selection;
+      row = this.parent().parent();
+      if (!(row.isEmpty() && row.can('remove'))) {
+        return;
+      }
+      ev.preventDefault();
+      lastChild = row.children[row.children.length - 1];
+      nextElement = lastChild.tableCellText().nextContent();
+      if (nextElement) {
+        nextElement.focus();
+        selection = new ContentSelect.Range(0, 0);
+        selection.select(nextElement.domElement());
+      }
+      return row.parent().detach(row);
+    };
+
+    TableCellText.prototype._keyDown = function(ev) {
+      var cell, cellIndex, lastCell, next, nextRow, row, selection;
+      selection = ContentSelect.Range.query(this._domElement);
+      if (!(this._atEnd(selection) && selection.isCollapsed())) {
+        return;
+      }
+      ev.preventDefault();
+      cell = this.parent();
+      if (this._isInLastRow()) {
+        row = cell.parent();
+        lastCell = row.children[row.children.length - 1].tableCellText();
+        next = lastCell.nextContent();
+        if (next) {
+          return next.focus();
+        } else {
+          return ContentEdit.Root.get().trigger('next-region', this.closest(function(node) {
+            return node.type() === 'Region';
+          }));
+        }
+      } else {
+        nextRow = cell.parent().nextWithTest(function(node) {
+          return node.type() === 'TableRow';
+        });
+        cellIndex = cell.parent().children.indexOf(cell);
+        cellIndex = Math.min(cellIndex, nextRow.children.length);
+        return nextRow.children[cellIndex].tableCellText().focus();
+      }
+    };
+
     TableCellText.prototype._keyReturn = function(ev) {
       ev.preventDefault();
       return this._keyTab({
         'shiftKey': false,
         'preventDefault': function() {}
       });
-    };
-
-    TableCellText.prototype._keyDown = function(ev) {
-      var cell, cellIndex, lastCell, nextRow, row;
-      ev.preventDefault();
-      cell = this.parent();
-      if (this._isInLastRow()) {
-        row = cell.parent();
-        lastCell = row.children[row.children.length - 1].tableCellText();
-        return lastCell.nextContent().focus();
-      } else {
-        nextRow = cell.parent().nextWithTest(function(node) {
-          return node.constructor.name === 'TableRow';
-        });
-        cellIndex = cell.parent().children.indexOf(cell);
-        cellIndex = Math.min(cellIndex, nextRow.children.length);
-        return nextRow.children[cellIndex].tableCellText().focus();
-      }
     };
 
     TableCellText.prototype._keyTab = function(ev) {
@@ -4667,6 +5067,9 @@
         }
         return this.previousContent().focus();
       } else {
+        if (!this.can('spawn')) {
+          return;
+        }
         grandParent = cell.parent().parent();
         if (grandParent.tagName() === 'tbody' && this._isLastInSection()) {
           row = new ContentEdit.TableRow();
@@ -4679,7 +5082,7 @@
             row.attach(newCell);
           }
           section = this.closest(function(node) {
-            return node.constructor.name === 'TableSection';
+            return node.type() === 'TableSection';
           });
           section.attach(row);
           return row.children[0].tableCellText().focus();
@@ -4690,15 +5093,26 @@
     };
 
     TableCellText.prototype._keyUp = function(ev) {
-      var cell, cellIndex, previousRow, row;
+      var cell, cellIndex, previous, previousRow, row, selection;
+      selection = ContentSelect.Range.query(this._domElement);
+      if (!(selection.get()[0] === 0 && selection.isCollapsed())) {
+        return;
+      }
       ev.preventDefault();
       cell = this.parent();
       if (this._isInFirstRow()) {
         row = cell.parent();
-        return row.children[0].previousContent().focus();
+        previous = row.children[0].previousContent();
+        if (previous) {
+          return previous.focus();
+        } else {
+          return ContentEdit.Root.get().trigger('previous-region', this.closest(function(node) {
+            return node === 'Region';
+          }));
+        }
       } else {
         previousRow = cell.parent().previousWithTest(function(node) {
-          return node.constructor.name === 'TableRow';
+          return node.type() === 'TableRow';
         });
         cellIndex = cell.parent().children.indexOf(cell);
         cellIndex = Math.min(cellIndex, previousRow.children.length);
@@ -4718,13 +5132,14 @@
 
 (function() {
   var AttributeUI, CropMarksUI, StyleUI, _EditorApp,
-    __slice = [].slice,
     __hasProp = {}.hasOwnProperty,
     __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
-    __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
+    __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; },
+    __slice = [].slice;
 
   window.ContentTools = {
     Tools: {},
+    CANCEL_MESSAGE: 'Your changes have not been saved, do you really want to lose them?'.trim(),
     DEFAULT_TOOLS: [['bold', 'italic', 'link', 'align-left', 'align-center', 'align-right'], ['heading', 'subheading', 'paragraph', 'unordered-list', 'ordered-list', 'table', 'indent', 'unindent', 'line-break'], ['image', 'video', 'preformatted'], ['undo', 'redo', 'remove']],
     DEFAULT_VIDEO_HEIGHT: 300,
     DEFAULT_VIDEO_WIDTH: 400,
@@ -4733,15 +5148,17 @@
     IMAGE_UPLOADER: null,
     MIN_CROP: 10,
     RESTRICTED_ATTRIBUTES: {
+      '*': ['style'],
       'img': ['height', 'src', 'width', 'data-ce-max-width', 'data-ce-min-width'],
       'iframe': ['height', 'width']
     },
     getEmbedVideoURL: function(url) {
-      var domains, id, kv, m, netloc, params, paramsStr, parser, path, _i, _len, _ref;
+      var domains, id, k, kv, m, netloc, paramStr, params, paramsStr, parser, path, v, _i, _len, _ref;
       domains = {
         'www.youtube.com': 'youtube',
         'youtu.be': 'youtube',
-        'vimeo.com': 'vimeo'
+        'vimeo.com': 'vimeo',
+        'player.vimeo.com': 'vimeo'
       };
       parser = document.createElement('a');
       parser.href = url;
@@ -4756,7 +5173,9 @@
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         kv = _ref[_i];
         kv = kv.split("=");
-        params[kv[0]] = kv[1];
+        if (kv[0]) {
+          params[kv[0]] = kv[1];
+        }
       }
       switch (domains[netloc]) {
         case 'youtube':
@@ -4765,6 +5184,7 @@
               return null;
             }
             id = params['v'];
+            delete params['v'];
           } else {
             m = path.match(/\/([A-Za-z0-9_-]+)$/i);
             if (!m) {
@@ -4772,15 +5192,64 @@
             }
             id = m[1];
           }
-          return "https://www.youtube.com/embed/" + id;
+          url = "https://www.youtube.com/embed/" + id;
+          paramStr = ((function() {
+            var _results;
+            _results = [];
+            for (k in params) {
+              v = params[k];
+              _results.push("" + k + "=" + v);
+            }
+            return _results;
+          })()).join('&');
+          if (paramStr) {
+            url += "?" + paramStr;
+          }
+          return url;
         case 'vimeo':
           m = path.match(/\/(\w+\/\w+\/){0,1}(\d+)/i);
           if (!m) {
             return null;
           }
-          return "https://player.vimeo.com/video/" + m[2];
+          url = "https://player.vimeo.com/video/" + m[2];
+          paramStr = ((function() {
+            var _results;
+            _results = [];
+            for (k in params) {
+              v = params[k];
+              _results.push("" + k + "=" + v);
+            }
+            return _results;
+          })()).join('&');
+          if (paramStr) {
+            url += "?" + paramStr;
+          }
+          return url;
       }
       return null;
+    },
+    getRestrictedAtributes: function(tagName) {
+      var restricted;
+      restricted = [];
+      if (ContentTools.RESTRICTED_ATTRIBUTES[tagName]) {
+        restricted = restricted.concat(ContentTools.RESTRICTED_ATTRIBUTES[tagName]);
+      }
+      if (ContentTools.RESTRICTED_ATTRIBUTES['*']) {
+        restricted = restricted.concat(ContentTools.RESTRICTED_ATTRIBUTES['*']);
+      }
+      return restricted;
+    },
+    getScrollPosition: function() {
+      var isCSS1Compat, supportsPageOffset;
+      supportsPageOffset = window.pageXOffset !== void 0;
+      isCSS1Compat = (document.compatMode || 4) === 4;
+      if (supportsPageOffset) {
+        return [window.pageXOffset, window.pageYOffset];
+      } else if (isCSS1Compat) {
+        return [document.documentElement.scrollLeft, document.documentElement.scrollTop];
+      } else {
+        return [document.body.scrollLeft, document.body.scrollTop];
+      }
     }
   };
 
@@ -4800,12 +5269,12 @@
       return this._domElement;
     };
 
-    ComponentUI.prototype.parent = function() {
-      return this._parent;
-    };
-
     ComponentUI.prototype.isMounted = function() {
       return this._domElement !== null;
+    };
+
+    ComponentUI.prototype.parent = function() {
+      return this._parent;
     };
 
     ComponentUI.prototype.attach = function(component, index) {
@@ -4827,7 +5296,14 @@
       return ContentEdit.addCSSClass(this._domElement, className);
     };
 
-    ComponentUI.prototype.detatch = function(component) {};
+    ComponentUI.prototype.detatch = function(component) {
+      var componentIndex;
+      componentIndex = this._children.indexOf(component);
+      if (componentIndex === -1) {
+        return;
+      }
+      return this._children.splice(componentIndex, 1);
+    };
 
     ComponentUI.prototype.mount = function() {};
 
@@ -4843,37 +5319,43 @@
         return;
       }
       this._removeDOMEventListeners();
-      this._domElement.parentNode.removeChild(this._domElement);
+      if (this._domElement.parentNode) {
+        this._domElement.parentNode.removeChild(this._domElement);
+      }
       return this._domElement = null;
     };
 
-    ComponentUI.prototype.bind = function(eventName, callback) {
+    ComponentUI.prototype.addEventListener = function(eventName, callback) {
       if (this._bindings[eventName] === void 0) {
         this._bindings[eventName] = [];
       }
       this._bindings[eventName].push(callback);
-      return callback;
     };
 
-    ComponentUI.prototype.trigger = function() {
-      var args, callback, eventName, _i, _len, _ref, _results;
-      eventName = arguments[0], args = 2 <= arguments.length ? __slice.call(arguments, 1) : [];
-      if (!this._bindings[eventName]) {
-        return;
+    ComponentUI.prototype.createEvent = function(eventName, detail) {
+      return new ContentTools.Event(eventName, detail);
+    };
+
+    ComponentUI.prototype.dispatchEvent = function(ev) {
+      var callback, _i, _len, _ref;
+      if (!this._bindings[ev.name()]) {
+        return !ev.defaultPrevented();
       }
-      _ref = this._bindings[eventName];
-      _results = [];
+      _ref = this._bindings[ev.name()];
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         callback = _ref[_i];
+        if (ev.propagationStopped()) {
+          break;
+        }
         if (!callback) {
           continue;
         }
-        _results.push(callback.call.apply(callback, [this].concat(__slice.call(args))));
+        callback.call(this, ev);
       }
-      return _results;
+      return !ev.defaultPrevented();
     };
 
-    ComponentUI.prototype.unbind = function(eventName, callback) {
+    ComponentUI.prototype.removeEventListener = function(eventName, callback) {
       var i, suspect, _i, _len, _ref, _results;
       if (!eventName) {
         this._bindings = {};
@@ -4903,7 +5385,7 @@
 
     ComponentUI.prototype._removeDOMEventListeners = function() {};
 
-    ComponentUI.prototype.createDiv = function(classNames, attributes, content) {
+    ComponentUI.createDiv = function(classNames, attributes, content) {
       var domElement, name, value;
       domElement = document.createElement('div');
       if (classNames && classNames.length > 0) {
@@ -4934,8 +5416,15 @@
 
     WidgetUI.prototype.attach = function(component, index) {
       WidgetUI.__super__.attach.call(this, component, index);
-      if (this.isMounted()) {
+      if (!this.isMounted()) {
         return component.mount();
+      }
+    };
+
+    WidgetUI.prototype.detatch = function(component) {
+      WidgetUI.__super__.detatch.call(this, component);
+      if (this.isMounted()) {
+        return component.unmount();
       }
     };
 
@@ -4968,7 +5457,9 @@
           }
         };
       })(this);
-      return setTimeout(monitorForHidden, 250);
+      if (this.isMounted()) {
+        return setTimeout(monitorForHidden, 250);
+      }
     };
 
     return WidgetUI;
@@ -4994,6 +5485,47 @@
 
   })(ContentTools.ComponentUI);
 
+  ContentTools.Event = (function() {
+    function Event(name, detail) {
+      this._name = name;
+      this._detail = detail;
+      this._timeStamp = Date.now();
+      this._defaultPrevented = false;
+      this._propagationStopped = false;
+    }
+
+    Event.prototype.defaultPrevented = function() {
+      return this._defaultPrevented;
+    };
+
+    Event.prototype.detail = function() {
+      return this._detail;
+    };
+
+    Event.prototype.name = function() {
+      return this._name;
+    };
+
+    Event.prototype.propagationStopped = function() {
+      return this._propagationStopped;
+    };
+
+    Event.prototype.timeStamp = function() {
+      return this._timeStamp;
+    };
+
+    Event.prototype.preventDefault = function() {
+      return this._defaultPrevented = true;
+    };
+
+    Event.prototype.stopImmediatePropagation = function() {
+      return this._propagationStopped = true;
+    };
+
+    return Event;
+
+  })();
+
   ContentTools.FlashUI = (function(_super) {
     __extends(FlashUI, _super);
 
@@ -5004,7 +5536,7 @@
 
     FlashUI.prototype.mount = function(modifier) {
       var monitorForHidden;
-      this._domElement = this.createDiv(['ct-flash', 'ct-flash--active', "ct-flash--" + modifier, 'ct-widget', 'ct-widget--active']);
+      this._domElement = this.constructor.createDiv(['ct-flash', 'ct-flash--active', "ct-flash--" + modifier, 'ct-widget', 'ct-widget--active']);
       FlashUI.__super__.mount.call(this, ContentTools.EditorApp.get().domElement());
       monitorForHidden = (function(_this) {
         return function() {
@@ -5031,47 +5563,82 @@
 
     function IgnitionUI() {
       IgnitionUI.__super__.constructor.call(this);
-      this._busy = false;
+      this._revertToState = 'ready';
+      this._state = 'ready';
     }
 
     IgnitionUI.prototype.busy = function(busy) {
-      if (busy === void 0) {
-        return this._state === 'busy';
-      }
-      if (this._busy === busy) {
-        return;
-      }
-      this._busy = busy;
-      if (busy) {
-        return this.addCSSClass('ct-ignition--busy');
-      } else {
-        return this.removeCSSClass('ct-ignition--busy');
+      if (this.dispatchEvent(this.createEvent('busy', {
+        busy: busy
+      }))) {
+        if (busy === (this._state === 'busy')) {
+          return;
+        }
+        if (busy) {
+          this._revertToState = this._state;
+          return this.state('busy');
+        } else {
+          return this.state(this._revertToState);
+        }
       }
     };
 
-    IgnitionUI.prototype.changeState = function(state) {
-      if (state === 'editing') {
-        this.addCSSClass('ct-ignition--editing');
-        return this.removeCSSClass('ct-ignition--ready');
-      } else if (state === 'ready') {
-        this.removeCSSClass('ct-ignition--editing');
-        return this.addCSSClass('ct-ignition--ready');
+    IgnitionUI.prototype.cancel = function() {
+      if (this.dispatchEvent(this.createEvent('cancel'))) {
+        return this.state('ready');
+      }
+    };
+
+    IgnitionUI.prototype.confirm = function() {
+      if (this.dispatchEvent(this.createEvent('confirm'))) {
+        return this.state('ready');
+      }
+    };
+
+    IgnitionUI.prototype.edit = function() {
+      if (this.dispatchEvent(this.createEvent('edit'))) {
+        return this.state('editing');
       }
     };
 
     IgnitionUI.prototype.mount = function() {
       IgnitionUI.__super__.mount.call(this);
-      this._domElement = this.createDiv(['ct-widget', 'ct-ignition', 'ct-ignition--ready']);
+      this._domElement = this.constructor.createDiv(['ct-widget', 'ct-ignition', 'ct-ignition--ready']);
       this.parent().domElement().appendChild(this._domElement);
-      this._domEdit = this.createDiv(['ct-ignition__button', 'ct-ignition__button--edit']);
+      this._domEdit = this.constructor.createDiv(['ct-ignition__button', 'ct-ignition__button--edit']);
       this._domElement.appendChild(this._domEdit);
-      this._domConfirm = this.createDiv(['ct-ignition__button', 'ct-ignition__button--confirm']);
+      this._domConfirm = this.constructor.createDiv(['ct-ignition__button', 'ct-ignition__button--confirm']);
       this._domElement.appendChild(this._domConfirm);
-      this._domCancel = this.createDiv(['ct-ignition__button', 'ct-ignition__button--cancel']);
+      this._domCancel = this.constructor.createDiv(['ct-ignition__button', 'ct-ignition__button--cancel']);
       this._domElement.appendChild(this._domCancel);
-      this._domBusy = this.createDiv(['ct-ignition__button', 'ct-ignition__button--busy']);
+      this._domBusy = this.constructor.createDiv(['ct-ignition__button', 'ct-ignition__button--busy']);
       this._domElement.appendChild(this._domBusy);
       return this._addDOMEventListeners();
+    };
+
+    IgnitionUI.prototype.state = function(state) {
+      if (state === void 0) {
+        return this._state;
+      }
+      if (this._state === state) {
+        return;
+      }
+      if (!this.dispatchEvent(this.createEvent('statechange', {
+        state: state
+      }))) {
+        return;
+      }
+      this._state = state;
+      this.removeCSSClass('ct-ignition--busy');
+      this.removeCSSClass('ct-ignition--editing');
+      this.removeCSSClass('ct-ignition--ready');
+      if (this._state === 'busy') {
+        return this.addCSSClass('ct-ignition--busy');
+      } else if (this._state === 'editing') {
+        return this.addCSSClass('ct-ignition--editing');
+      } else if (this._state === 'ready') {
+        return this.addCSSClass('ct-ignition--ready');
+      }
     };
 
     IgnitionUI.prototype.unmount = function() {
@@ -5085,25 +5652,19 @@
       this._domEdit.addEventListener('click', (function(_this) {
         return function(ev) {
           ev.preventDefault();
-          _this.addCSSClass('ct-ignition--editing');
-          _this.removeCSSClass('ct-ignition--ready');
-          return _this.trigger('start');
+          return _this.edit();
         };
       })(this));
       this._domConfirm.addEventListener('click', (function(_this) {
         return function(ev) {
           ev.preventDefault();
-          _this.removeCSSClass('ct-ignition--editing');
-          _this.addCSSClass('ct-ignition--ready');
-          return _this.trigger('stop', true);
+          return _this.confirm();
         };
       })(this));
       return this._domCancel.addEventListener('click', (function(_this) {
         return function(ev) {
           ev.preventDefault();
-          _this.removeCSSClass('ct-ignition--editing');
-          _this.addCSSClass('ct-ignition--ready');
-          return _this.trigger('stop', false);
+          return _this.cancel();
         };
       })(this));
     };
@@ -5121,9 +5682,9 @@
     }
 
     InspectorUI.prototype.mount = function() {
-      this._domElement = this.createDiv(['ct-widget', 'ct-inspector']);
+      this._domElement = this.constructor.createDiv(['ct-widget', 'ct-inspector']);
       this.parent().domElement().appendChild(this._domElement);
-      this._domTags = this.createDiv(['ct-inspector__tags', 'ct-tags']);
+      this._domTags = this.constructor.createDiv(['ct-inspector__tags', 'ct-tags']);
       this._domElement.appendChild(this._domTags);
       this._addDOMEventListeners();
       this._handleFocusChange = (function(_this) {
@@ -5152,6 +5713,7 @@
         tag = _ref[_i];
         tag.unmount();
       }
+      this._tagUIs = [];
       if (!element) {
         return;
       }
@@ -5161,7 +5723,7 @@
       _results = [];
       for (_j = 0, _len1 = elements.length; _j < _len1; _j++) {
         element = elements[_j];
-        if (ContentTools.INSPECTOR_IGNORED_ELEMENTS.indexOf(element.constructor.name) !== -1) {
+        if (ContentTools.INSPECTOR_IGNORED_ELEMENTS.indexOf(element.type()) !== -1) {
           continue;
         }
         tag = new ContentTools.TagUI(element);
@@ -5188,7 +5750,7 @@
       if (before == null) {
         before = null;
       }
-      this._domElement = this.createDiv(['ct-tag']);
+      this._domElement = this.constructor.createDiv(['ct-tag']);
       this._domElement.textContent = this.element.tagName();
       return TagUI.__super__.mount.call(this, domParent, before);
     };
@@ -5206,9 +5768,8 @@
       app = ContentTools.EditorApp.get();
       modal = new ContentTools.ModalUI();
       dialog = new ContentTools.PropertiesDialog(this.element);
-      dialog.bind('cancel', (function(_this) {
+      dialog.addEventListener('cancel', (function(_this) {
         return function() {
-          dialog.unbind('cancel');
           modal.hide();
           dialog.hide();
           if (_this.element.restoreState) {
@@ -5216,10 +5777,13 @@
           }
         };
       })(this));
-      dialog.bind('save', (function(_this) {
-        return function(attributes, styles, innerHTML) {
-          var applied, className, classNames, cssClass, element, name, value, _i, _j, _len, _len1, _ref, _ref1;
-          dialog.unbind('save');
+      dialog.addEventListener('save', (function(_this) {
+        return function(ev) {
+          var applied, attributes, className, classNames, cssClass, detail, element, innerHTML, name, styles, value, _i, _j, _len, _len1, _ref, _ref1;
+          detail = ev.detail();
+          attributes = detail.changedAttributes;
+          styles = detail.changedStyles;
+          innerHTML = detail.innerHTML;
           for (name in attributes) {
             value = attributes[name];
             if (name === 'class') {
@@ -5303,7 +5867,7 @@
     }
 
     ModalUI.prototype.mount = function() {
-      this._domElement = this.createDiv(['ct-widget', 'ct-modal']);
+      this._domElement = this.constructor.createDiv(['ct-widget', 'ct-modal']);
       this.parent().domElement().appendChild(this._domElement);
       if (this._transparent) {
         this.addCSSClass('ct-modal--transparent');
@@ -5324,7 +5888,7 @@
     ModalUI.prototype._addDOMEventListeners = function() {
       return this._domElement.addEventListener('click', (function(_this) {
         return function(ev) {
-          return _this.trigger('click');
+          return _this.dispatchEvent(_this.createEvent('click'));
         };
       })(this));
     };
@@ -5357,50 +5921,26 @@
       return ToolboxUI.__super__.hide.call(this);
     };
 
-    ToolboxUI.prototype.tools = function(tools) {
-      if (tools === void 0) {
-        return this._tools;
-      }
-      this._tools = tools;
-      this.unmount();
-      return this.mount();
-    };
-
     ToolboxUI.prototype.mount = function() {
-      var coord, domToolGroup, i, position, restore, tool, toolGroup, toolName, _i, _j, _len, _len1, _ref;
-      this._domElement = this.createDiv(['ct-widget', 'ct-toolbox']);
+      var coord, position, restore;
+      this._domElement = this.constructor.createDiv(['ct-widget', 'ct-toolbox']);
       this.parent().domElement().appendChild(this._domElement);
-      this._domGrip = this.createDiv(['ct-toolbox__grip', 'ct-grip']);
+      this._domGrip = this.constructor.createDiv(['ct-toolbox__grip', 'ct-grip']);
       this._domElement.appendChild(this._domGrip);
-      this._domGrip.appendChild(this.createDiv(['ct-grip__bump']));
-      this._domGrip.appendChild(this.createDiv(['ct-grip__bump']));
-      this._domGrip.appendChild(this.createDiv(['ct-grip__bump']));
-      _ref = this._tools;
-      for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
-        toolGroup = _ref[i];
-        domToolGroup = this.createDiv(['ct-tool-group']);
-        this._domElement.appendChild(domToolGroup);
-        for (_j = 0, _len1 = toolGroup.length; _j < _len1; _j++) {
-          toolName = toolGroup[_j];
-          tool = ContentTools.ToolShelf.fetch(toolName);
-          this._toolUIs[toolName] = new ContentTools.ToolUI(tool);
-          this._toolUIs[toolName].mount(domToolGroup);
-          this._toolUIs[toolName].disable();
-          this._toolUIs[toolName].bind('apply', (function(_this) {
-            return function() {
-              return _this.updateTools();
-            };
-          })(this));
-        }
-      }
+      this._domGrip.appendChild(this.constructor.createDiv(['ct-grip__bump']));
+      this._domGrip.appendChild(this.constructor.createDiv(['ct-grip__bump']));
+      this._domGrip.appendChild(this.constructor.createDiv(['ct-grip__bump']));
+      this._domToolGroups = this.constructor.createDiv(['ct-tool-groups']);
+      this._domElement.appendChild(this._domToolGroups);
+      this.tools(this._tools);
       restore = window.localStorage.getItem('ct-toolbox-position');
       if (restore && /^\d+,\d+$/.test(restore)) {
         position = (function() {
-          var _k, _len2, _ref1, _results;
-          _ref1 = restore.split(',');
+          var _i, _len, _ref, _results;
+          _ref = restore.split(',');
           _results = [];
-          for (_k = 0, _len2 = _ref1.length; _k < _len2; _k++) {
-            coord = _ref1[_k];
+          for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+            coord = _ref[_i];
             _results.push(parseInt(coord));
           }
           return _results;
@@ -5410,6 +5950,51 @@
         this._contain();
       }
       return this._addDOMEventListeners();
+    };
+
+    ToolboxUI.prototype.tools = function(tools) {
+      var domToolGroup, i, tool, toolGroup, toolName, toolUI, _i, _len, _ref, _ref1, _results;
+      if (tools === void 0) {
+        return this._tools;
+      }
+      this._tools = tools;
+      if (!this.isMounted()) {
+        return;
+      }
+      _ref = this._toolUIs;
+      for (toolName in _ref) {
+        toolUI = _ref[toolName];
+        toolUI.unmount();
+      }
+      this._toolUIs = {};
+      while (this._domToolGroups.lastChild) {
+        this._domToolGroups.removeChild(this._domToolGroups.lastChild);
+      }
+      _ref1 = this._tools;
+      _results = [];
+      for (i = _i = 0, _len = _ref1.length; _i < _len; i = ++_i) {
+        toolGroup = _ref1[i];
+        domToolGroup = this.constructor.createDiv(['ct-tool-group']);
+        this._domToolGroups.appendChild(domToolGroup);
+        _results.push((function() {
+          var _j, _len1, _results1;
+          _results1 = [];
+          for (_j = 0, _len1 = toolGroup.length; _j < _len1; _j++) {
+            toolName = toolGroup[_j];
+            tool = ContentTools.ToolShelf.fetch(toolName);
+            this._toolUIs[toolName] = new ContentTools.ToolUI(tool);
+            this._toolUIs[toolName].mount(domToolGroup);
+            this._toolUIs[toolName].disabled(true);
+            _results1.push(this._toolUIs[toolName].addEventListener('applied', (function(_this) {
+              return function() {
+                return _this.updateTools();
+              };
+            })(this)));
+          }
+          return _results1;
+        }).call(this));
+      }
+      return _results;
     };
 
     ToolboxUI.prototype.updateTools = function() {
@@ -5458,7 +6043,11 @@
           if (element === _this._lastUpdateElement) {
             if (element && element.selection) {
               selection = element.selection();
-              if (_this._lastUpdateSelection && selection.eq(_this._lastUpdateSelection)) {
+              if (_this._lastUpdateSelection) {
+                if (!selection.eq(_this._lastUpdateSelection)) {
+                  update = true;
+                }
+              } else {
                 update = true;
               }
             }
@@ -5470,16 +6059,22 @@
               update = true;
             }
             _this._lastUpdateHistoryLength = app.history.length();
+            if (_this._lastUpdateHistoryIndex !== app.history.index()) {
+              update = true;
+            }
+            _this._lastUpdateHistoryIndex = app.history.index();
           }
           _this._lastUpdateElement = element;
           _this._lastUpdateSelection = selection;
-          _ref = _this._toolUIs;
-          _results = [];
-          for (name in _ref) {
-            toolUI = _ref[name];
-            _results.push(toolUI.update(element, selection));
+          if (update) {
+            _ref = _this._toolUIs;
+            _results = [];
+            for (name in _ref) {
+              toolUI = _ref[name];
+              _results.push(toolUI.update(element, selection));
+            }
+            return _results;
           }
-          return _results;
         };
       })(this);
       this._updateToolsTimeout = setInterval(this._updateTools, 100);
@@ -5620,69 +6215,64 @@
       this._disabled = false;
     }
 
-    ToolUI.prototype.disabled = function() {
-      return this._disabled;
-    };
-
-    ToolUI.prototype.apply = function() {
-      var callback, element, selection;
-      element = ContentEdit.Root.get().focused();
-      if (!(element && element.isMounted())) {
-        return;
-      }
-      selection = null;
-      if (element.selection) {
-        selection = element.selection();
-      }
+    ToolUI.prototype.apply = function(element, selection) {
+      var callback, detail;
       if (!this.tool.canApply(element, selection)) {
         return;
       }
+      detail = {
+        'element': element,
+        'selection': selection
+      };
       callback = (function(_this) {
         return function(applied) {
           if (applied) {
-            return _this.trigger('apply');
+            return _this.dispatchEvent(_this.createEvent('applied', detail));
           }
         };
       })(this);
-      return this.tool.apply(element, selection, callback);
+      if (this.dispatchEvent(this.createEvent('apply', detail))) {
+        return this.tool.apply(element, selection, callback);
+      }
     };
 
-    ToolUI.prototype.disable = function() {
-      if (this._disabled) {
+    ToolUI.prototype.disabled = function(disabledState) {
+      if (disabledState === void 0) {
+        return this._disabled;
+      }
+      if (this._disabled === disabledState) {
         return;
       }
-      this._disabled = true;
-      this._mouseDown = false;
-      this.addCSSClass('ct-tool--disabled');
-      return this.removeCSSClass('ct-tool--applied');
-    };
-
-    ToolUI.prototype.enable = function() {
-      if (!this._disabled) {
-        return;
+      this._disabled = disabledState;
+      if (disabledState) {
+        this._mouseDown = false;
+        this.addCSSClass('ct-tool--disabled');
+        return this.removeCSSClass('ct-tool--applied');
+      } else {
+        return this.removeCSSClass('ct-tool--disabled');
       }
-      this._disabled = false;
-      return this.removeCSSClass('ct-tool--disabled');
     };
 
     ToolUI.prototype.mount = function(domParent, before) {
       if (before == null) {
         before = null;
       }
-      this._domElement = this.createDiv(['ct-tool', "ct-tool--" + this.tool.icon]);
+      this._domElement = this.constructor.createDiv(['ct-tool', "ct-tool--" + this.tool.icon]);
       this._domElement.setAttribute('data-tooltip', ContentEdit._(this.tool.label));
       return ToolUI.__super__.mount.call(this, domParent, before);
     };
 
     ToolUI.prototype.update = function(element, selection) {
-      if (!(element && element.isMounted())) {
-        this.disable();
-        return;
+      if (this.tool.requiresElement) {
+        if (!(element && element.isMounted())) {
+          this.disabled(true);
+          return;
+        }
       }
       if (this.tool.canApply(element, selection)) {
-        this.enable();
+        this.disabled(false);
       } else {
-        this.disable();
+        this.disabled(true);
         return;
       }
       if (this.tool.isApplied(element, selection)) {
@@ -5707,14 +6297,25 @@
       return this.addCSSClass('ct-tool--down');
     };
 
-    ToolUI.prototype._onMouseLeave = function() {
+    ToolUI.prototype._onMouseLeave = function(ev) {
       this._mouseDown = false;
       return this.removeCSSClass('ct-tool--down');
     };
 
-    ToolUI.prototype._onMouseUp = function() {
+    ToolUI.prototype._onMouseUp = function(ev) {
+      var element, selection;
       if (this._mouseDown) {
-        this.apply();
+        element = ContentEdit.Root.get().focused();
+        if (this.tool.requiresElement) {
+          if (!(element && element.isMounted())) {
+            return;
+          }
+        }
+        selection = null;
+        if (element && element.selection) {
+          selection = element.selection();
+        }
+        this.apply(element, selection);
       }
       this._mouseDown = false;
       return this.removeCSSClass('ct-tool--down');
@@ -5733,7 +6334,7 @@
     }
 
     AnchoredDialogUI.prototype.mount = function() {
-      this._domElement = this.createDiv(['ct-widget', 'ct-anchored-dialog']);
+      this._domElement = this.constructor.createDiv(['ct-widget', 'ct-anchored-dialog']);
       this.parent().domElement().appendChild(this._domElement);
       this._domElement.style.top = "" + this._position[1] + "px";
       return this._domElement.style.left = "" + this._position[0] + "px";
@@ -5746,7 +6347,7 @@
       this._position = newPosition.slice();
       if (this.isMounted()) {
         this._domElement.style.top = "" + this._position[1] + "px";
-        return this._domElement.style.left = "" + this._position[10] + "px";
+        return this._domElement.style.left = "" + this._position[0] + "px";
       }
     };
 
@@ -5798,22 +6399,22 @@
       if (this._busy) {
         dialogCSSClasses.push('ct-dialog--busy');
       }
-      this._domElement = this.createDiv(dialogCSSClasses);
+      this._domElement = this.constructor.createDiv(dialogCSSClasses);
       this.parent().domElement().appendChild(this._domElement);
-      domHeader = this.createDiv(['ct-dialog__header']);
+      domHeader = this.constructor.createDiv(['ct-dialog__header']);
       this._domElement.appendChild(domHeader);
-      this._domCaption = this.createDiv(['ct-dialog__caption']);
+      this._domCaption = this.constructor.createDiv(['ct-dialog__caption']);
       domHeader.appendChild(this._domCaption);
       this.caption(this._caption);
-      this._domClose = this.createDiv(['ct-dialog__close']);
+      this._domClose = this.constructor.createDiv(['ct-dialog__close']);
       domHeader.appendChild(this._domClose);
-      domBody = this.createDiv(['ct-dialog__body']);
+      domBody = this.constructor.createDiv(['ct-dialog__body']);
       this._domElement.appendChild(domBody);
-      this._domView = this.createDiv(['ct-dialog__view']);
+      this._domView = this.constructor.createDiv(['ct-dialog__view']);
       domBody.appendChild(this._domView);
-      this._domControls = this.createDiv(['ct-dialog__controls']);
+      this._domControls = this.constructor.createDiv(['ct-dialog__controls']);
       domBody.appendChild(this._domControls);
-      this._domBusy = this.createDiv(['ct-dialog__busy']);
+      this._domBusy = this.constructor.createDiv(['ct-dialog__busy']);
       return this._domElement.appendChild(this._domBusy);
     };
 
@@ -5833,7 +6434,7 @@
             return;
           }
           if (ev.keyCode === 27) {
-            return _this.trigger('cancel');
+            return _this.dispatchEvent(_this.createEvent('cancel'));
           }
         };
       })(this);
@@ -5844,7 +6445,7 @@
           if (_this._busy) {
             return;
           }
-          return _this.trigger('cancel');
+          return _this.dispatchEvent(_this.createEvent('cancel'));
         };
       })(this));
     };
@@ -5904,24 +6505,24 @@
       ContentEdit.addCSSClass(this._domElement, 'ct-image-dialog');
       ContentEdit.addCSSClass(this._domElement, 'ct-image-dialog--empty');
       ContentEdit.addCSSClass(this._domView, 'ct-image-dialog__view');
-      domTools = this.createDiv(['ct-control-group', 'ct-control-group--left']);
+      domTools = this.constructor.createDiv(['ct-control-group', 'ct-control-group--left']);
       this._domControls.appendChild(domTools);
-      this._domRotateCCW = this.createDiv(['ct-control', 'ct-control--icon', 'ct-control--rotate-ccw']);
+      this._domRotateCCW = this.constructor.createDiv(['ct-control', 'ct-control--icon', 'ct-control--rotate-ccw']);
       this._domRotateCCW.setAttribute('data-tooltip', ContentEdit._('Rotate') + ' -90°');
       domTools.appendChild(this._domRotateCCW);
-      this._domRotateCW = this.createDiv(['ct-control', 'ct-control--icon', 'ct-control--rotate-cw']);
+      this._domRotateCW = this.constructor.createDiv(['ct-control', 'ct-control--icon', 'ct-control--rotate-cw']);
       this._domRotateCW.setAttribute('data-tooltip', ContentEdit._('Rotate') + ' 90°');
       domTools.appendChild(this._domRotateCW);
-      this._domCrop = this.createDiv(['ct-control', 'ct-control--icon', 'ct-control--crop']);
+      this._domCrop = this.constructor.createDiv(['ct-control', 'ct-control--icon', 'ct-control--crop']);
       this._domCrop.setAttribute('data-tooltip', ContentEdit._('Crop marks'));
       domTools.appendChild(this._domCrop);
-      domProgressBar = this.createDiv(['ct-progress-bar']);
+      domProgressBar = this.constructor.createDiv(['ct-progress-bar']);
       domTools.appendChild(domProgressBar);
-      this._domProgress = this.createDiv(['ct-progress-bar__progress']);
+      this._domProgress = this.constructor.createDiv(['ct-progress-bar__progress']);
       domProgressBar.appendChild(this._domProgress);
-      domActions = this.createDiv(['ct-control-group', 'ct-control-group--right']);
+      domActions = this.constructor.createDiv(['ct-control-group', 'ct-control-group--right']);
       this._domControls.appendChild(domActions);
-      this._domUpload = this.createDiv(['ct-control', 'ct-control--text', 'ct-control--upload']);
+      this._domUpload = this.constructor.createDiv(['ct-control', 'ct-control--text', 'ct-control--upload']);
       this._domUpload.textContent = ContentEdit._('Upload');
       domActions.appendChild(this._domUpload);
       this._domInput = document.createElement('input');
@@ -5930,24 +6531,24 @@
       this._domInput.setAttribute('type', 'file');
       this._domInput.setAttribute('accept', 'image/*');
       this._domUpload.appendChild(this._domInput);
-      this._domInsert = this.createDiv(['ct-control', 'ct-control--text', 'ct-control--insert']);
+      this._domInsert = this.constructor.createDiv(['ct-control', 'ct-control--text', 'ct-control--insert']);
       this._domInsert.textContent = ContentEdit._('Insert');
       domActions.appendChild(this._domInsert);
-      this._domCancelUpload = this.createDiv(['ct-control', 'ct-control--text', 'ct-control--cancel']);
+      this._domCancelUpload = this.constructor.createDiv(['ct-control', 'ct-control--text', 'ct-control--cancel']);
       this._domCancelUpload.textContent = ContentEdit._('Cancel');
       domActions.appendChild(this._domCancelUpload);
-      this._domClear = this.createDiv(['ct-control', 'ct-control--text', 'ct-control--clear']);
+      this._domClear = this.constructor.createDiv(['ct-control', 'ct-control--text', 'ct-control--clear']);
       this._domClear.textContent = ContentEdit._('Clear');
       domActions.appendChild(this._domClear);
       this._addDOMEventListeners();
-      return this.trigger('imageUploader.mount');
+      return this.dispatchEvent(this.createEvent('imageuploader.mount'));
     };
 
     ImageDialog.prototype.populate = function(imageURL, imageSize) {
       this._imageURL = imageURL;
       this._imageSize = imageSize;
       if (!this._domImage) {
-        this._domImage = this.createDiv(['ct-image-dialog__image']);
+        this._domImage = this.constructor.createDiv(['ct-image-dialog__image']);
         this._domView.appendChild(this._domImage);
       }
       this._domImage.style['background-image'] = "url(" + imageURL + ")";
@@ -5975,7 +6576,11 @@
     };
 
     ImageDialog.prototype.save = function(imageURL, imageSize, imageAttrs) {
-      return this.trigger('save', imageURL, imageSize, imageAttrs);
+      return this.dispatchEvent(this.createEvent('save', {
+        'imageURL': imageURL,
+        'imageSize': imageSize,
+        'imageAttrs': imageAttrs
+      }));
     };
 
     ImageDialog.prototype.state = function(state) {
@@ -6006,7 +6611,7 @@
       this._domRotateCCW = null;
       this._domRotateCW = null;
       this._domUpload = null;
-      return this.trigger('imageUploader.unmount');
+      return this.dispatchEvent(this.createEvent('imageuploader.unmount'));
     };
 
     ImageDialog.prototype._addDOMEventListeners = function() {
@@ -6020,30 +6625,32 @@
             ev.target.type = 'text';
             ev.target.type = 'file';
           }
-          return _this.trigger('imageUploader.fileReady', file);
+          return _this.dispatchEvent(_this.createEvent('imageuploader.fileready', {
+            file: file
+          }));
         };
       })(this));
       this._domCancelUpload.addEventListener('click', (function(_this) {
         return function(ev) {
-          return _this.trigger('imageUploader.cancelUpload');
+          return _this.dispatchEvent(_this.createEvent('imageuploader.cancelupload'));
         };
       })(this));
       this._domClear.addEventListener('click', (function(_this) {
         return function(ev) {
           _this.removeCropMarks();
-          return _this.trigger('imageUploader.clear');
+          return _this.dispatchEvent(_this.createEvent('imageuploader.clear'));
         };
       })(this));
       this._domRotateCCW.addEventListener('click', (function(_this) {
         return function(ev) {
           _this.removeCropMarks();
-          return _this.trigger('imageUploader.rotateCCW');
+          return _this.dispatchEvent(_this.createEvent('imageuploader.rotateccw'));
         };
       })(this));
       this._domRotateCW.addEventListener('click', (function(_this) {
         return function(ev) {
           _this.removeCropMarks();
-          return _this.trigger('imageUploader.rotateCW');
+          return _this.dispatchEvent(_this.createEvent('imageuploader.rotatecw'));
         };
       })(this));
       this._domCrop.addEventListener('click', (function(_this) {
@@ -6057,7 +6664,7 @@
       })(this));
       return this._domInsert.addEventListener('click', (function(_this) {
         return function(ev) {
-          return _this.trigger('imageUploader.save');
+          return _this.dispatchEvent(_this.createEvent('imageuploader.save'));
         };
       })(this));
     };
@@ -6081,13 +6688,13 @@
       if (before == null) {
         before = null;
       }
-      this._domElement = this.createDiv(['ct-crop-marks']);
-      this._domClipper = this.createDiv(['ct-crop-marks__clipper']);
+      this._domElement = this.constructor.createDiv(['ct-crop-marks']);
+      this._domClipper = this.constructor.createDiv(['ct-crop-marks__clipper']);
       this._domElement.appendChild(this._domClipper);
-      this._domRulers = [this.createDiv(['ct-crop-marks__ruler', 'ct-crop-marks__ruler--top-left']), this.createDiv(['ct-crop-marks__ruler', 'ct-crop-marks__ruler--bottom-right'])];
+      this._domRulers = [this.constructor.createDiv(['ct-crop-marks__ruler', 'ct-crop-marks__ruler--top-left']), this.constructor.createDiv(['ct-crop-marks__ruler', 'ct-crop-marks__ruler--bottom-right'])];
       this._domClipper.appendChild(this._domRulers[0]);
       this._domClipper.appendChild(this._domRulers[1]);
-      this._domHandles = [this.createDiv(['ct-crop-marks__handle', 'ct-crop-marks__handle--top-left']), this.createDiv(['ct-crop-marks__handle', 'ct-crop-marks__handle--bottom-right'])];
+      this._domHandles = [this.constructor.createDiv(['ct-crop-marks__handle', 'ct-crop-marks__handle--top-left']), this.constructor.createDiv(['ct-crop-marks__handle', 'ct-crop-marks__handle--bottom-right'])];
       this._domElement.appendChild(this._domHandles[0]);
       this._domElement.appendChild(this._domHandles[1]);
       CropMarksUI.__super__.mount.call(this, domParent, before);
@@ -6207,14 +6814,22 @@
   })(ContentTools.AnchoredComponentUI);
 
   ContentTools.LinkDialog = (function(_super) {
+    var NEW_WINDOW_TARGET;
+
     __extends(LinkDialog, _super);
 
-    function LinkDialog(initialValue) {
-      if (initialValue == null) {
-        initialValue = '';
+    NEW_WINDOW_TARGET = '_blank';
+
+    function LinkDialog(href, target) {
+      if (href == null) {
+        href = '';
+      }
+      if (target == null) {
+        target = '';
       }
       LinkDialog.__super__.constructor.call(this);
-      this._initialValue = initialValue;
+      this._href = href;
+      this._target = target;
     }
 
     LinkDialog.prototype.mount = function() {
@@ -6224,24 +6839,35 @@
       this._domInput.setAttribute('name', 'href');
       this._domInput.setAttribute('placeholder', ContentEdit._('Enter a link') + '...');
       this._domInput.setAttribute('type', 'text');
-      this._domInput.setAttribute('value', this._initialValue);
+      this._domInput.setAttribute('value', this._href);
       this._domElement.appendChild(this._domInput);
-      this._domButton = this.createDiv(['ct-anchored-dialog__button']);
+      this._domTargetButton = this.constructor.createDiv(['ct-anchored-dialog__target-button']);
+      this._domElement.appendChild(this._domTargetButton);
+      if (this._target === NEW_WINDOW_TARGET) {
+        ContentEdit.addCSSClass(this._domTargetButton, 'ct-anchored-dialog__target-button--active');
+      }
+      this._domButton = this.constructor.createDiv(['ct-anchored-dialog__button']);
       this._domElement.appendChild(this._domButton);
       return this._addDOMEventListeners();
     };
 
     LinkDialog.prototype.save = function() {
-      if (!this.isMounted) {
-        return this.trigger('save', '');
+      var detail;
+      if (!this.isMounted()) {
+        this.dispatchEvent(this.createEvent('save'));
+        return;
       }
-      return this.trigger('save', this._domInput.value.trim());
+      detail = {
+        href: this._domInput.value.trim(),
+        target: this._target ? this._target : void 0
+      };
+      return this.dispatchEvent(this.createEvent('save', detail));
     };
 
     LinkDialog.prototype.show = function() {
       LinkDialog.__super__.show.call(this);
       this._domInput.focus();
-      if (this._initialValue) {
+      if (this._href) {
         return this._domInput.select();
       }
     };
@@ -6260,6 +6886,18 @@
         return function(ev) {
           if (ev.keyCode === 13) {
             return _this.save();
+          }
+        };
+      })(this));
+      this._domTargetButton.addEventListener('click', (function(_this) {
+        return function(ev) {
+          ev.preventDefault();
+          if (_this._target === NEW_WINDOW_TARGET) {
+            _this._target = '';
+            return ContentEdit.removeCSSClass(_this._domTargetButton, 'ct-anchored-dialog__target-button--active');
+          } else {
+            _this._target = NEW_WINDOW_TARGET;
+            return ContentEdit.addCSSClass(_this._domTargetButton, 'ct-anchored-dialog__target-button--active');
           }
         };
       })(this));
@@ -6285,8 +6923,8 @@
       this._attributeUIs = [];
       this._focusedAttributeUI = null;
       this._styleUIs = [];
-      this._supportsCoding = element.content;
-      if ((_ref = element.constructor.name) === 'ListItem' || _ref === 'TableCell') {
+      this._supportsCoding = this.element.content;
+      if ((_ref = this.element.type()) === 'ListItem' || _ref === 'TableCell') {
         this._supportsCoding = true;
       }
     }
@@ -6316,7 +6954,7 @@
           changedAttributes[name] = value;
         }
       }
-      restricted = ContentTools.RESTRICTED_ATTRIBUTES[this.element.tagName()];
+      restricted = ContentTools.getRestrictedAtributes(this.element.tagName());
       _ref1 = this.element.attributes();
       for (name in _ref1) {
         value = _ref1[name];
@@ -6359,19 +6997,19 @@
       PropertiesDialog.__super__.mount.call(this);
       ContentEdit.addCSSClass(this._domElement, 'ct-properties-dialog');
       ContentEdit.addCSSClass(this._domView, 'ct-properties-dialog__view');
-      this._domStyles = this.createDiv(['ct-properties-dialog__styles']);
+      this._domStyles = this.constructor.createDiv(['ct-properties-dialog__styles']);
       this._domStyles.setAttribute('data-ct-empty', ContentEdit._('No styles available for this tag'));
       this._domView.appendChild(this._domStyles);
-      _ref = ContentTools.StylePalette.styles(this.element.tagName());
+      _ref = ContentTools.StylePalette.styles(this.element);
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         style = _ref[_i];
         styleUI = new StyleUI(style, this.element.hasCSSClass(style.cssClass()));
         this._styleUIs.push(styleUI);
         styleUI.mount(this._domStyles);
       }
-      this._domAttributes = this.createDiv(['ct-properties-dialog__attributes']);
+      this._domAttributes = this.constructor.createDiv(['ct-properties-dialog__attributes']);
       this._domView.appendChild(this._domAttributes);
-      restricted = ContentTools.RESTRICTED_ATTRIBUTES[this.element.tagName()];
+      restricted = ContentTools.getRestrictedAtributes(this.element.tagName());
       attributes = this.element.attributes();
       attributeNames = [];
       for (name in attributes) {
@@ -6388,33 +7026,33 @@
         this._addAttributeUI(name, value);
       }
       this._addAttributeUI('', '');
-      this._domCode = this.createDiv(['ct-properties-dialog__code']);
+      this._domCode = this.constructor.createDiv(['ct-properties-dialog__code']);
       this._domView.appendChild(this._domCode);
       this._domInnerHTML = document.createElement('textarea');
       this._domInnerHTML.setAttribute('class', 'ct-properties-dialog__inner-html');
       this._domInnerHTML.setAttribute('name', 'code');
       this._domInnerHTML.value = this.getElementInnerHTML();
       this._domCode.appendChild(this._domInnerHTML);
-      domTabs = this.createDiv(['ct-control-group', 'ct-control-group--left']);
+      domTabs = this.constructor.createDiv(['ct-control-group', 'ct-control-group--left']);
       this._domControls.appendChild(domTabs);
-      this._domStylesTab = this.createDiv(['ct-control', 'ct-control--icon', 'ct-control--styles']);
+      this._domStylesTab = this.constructor.createDiv(['ct-control', 'ct-control--icon', 'ct-control--styles']);
       this._domStylesTab.setAttribute('data-tooltip', ContentEdit._('Styles'));
       domTabs.appendChild(this._domStylesTab);
-      this._domAttributesTab = this.createDiv(['ct-control', 'ct-control--icon', 'ct-control--attributes']);
+      this._domAttributesTab = this.constructor.createDiv(['ct-control', 'ct-control--icon', 'ct-control--attributes']);
       this._domAttributesTab.setAttribute('data-tooltip', ContentEdit._('Attributes'));
       domTabs.appendChild(this._domAttributesTab);
-      this._domCodeTab = this.createDiv(['ct-control', 'ct-control--icon', 'ct-control--code']);
+      this._domCodeTab = this.constructor.createDiv(['ct-control', 'ct-control--icon', 'ct-control--code']);
       this._domCodeTab.setAttribute('data-tooltip', ContentEdit._('Code'));
       domTabs.appendChild(this._domCodeTab);
       if (!this._supportsCoding) {
         ContentEdit.addCSSClass(this._domCodeTab, 'ct-control--muted');
       }
-      this._domRemoveAttribute = this.createDiv(['ct-control', 'ct-control--icon', 'ct-control--remove', 'ct-control--muted']);
+      this._domRemoveAttribute = this.constructor.createDiv(['ct-control', 'ct-control--icon', 'ct-control--remove', 'ct-control--muted']);
       this._domRemoveAttribute.setAttribute('data-tooltip', ContentEdit._('Remove'));
       domTabs.appendChild(this._domRemoveAttribute);
-      domActions = this.createDiv(['ct-control-group', 'ct-control-group--right']);
+      domActions = this.constructor.createDiv(['ct-control-group', 'ct-control-group--right']);
       this._domControls.appendChild(domActions);
-      this._domApply = this.createDiv(['ct-control', 'ct-control--text', 'ct-control--apply']);
+      this._domApply = this.constructor.createDiv(['ct-control', 'ct-control--text', 'ct-control--apply']);
       this._domApply.textContent = ContentEdit._('Apply');
       domActions.appendChild(this._domApply);
       lastTab = window.localStorage.getItem('ct-properties-dialog-tab');
@@ -6432,12 +7070,17 @@
     };
 
     PropertiesDialog.prototype.save = function() {
-      var innerHTML;
+      var detail, innerHTML;
       innerHTML = null;
       if (this._supportsCoding) {
         innerHTML = this._domInnerHTML.value;
       }
-      return this.trigger('save', this.changedAttributes(), this.changedStyles(), innerHTML);
+      detail = {
+        changedAttributes: this.changedAttributes(),
+        changedStyles: this.changedStyles(),
+        innerHTML: innerHTML
+      };
+      return this.dispatchEvent(this.createEvent('save', detail));
     };
 
     PropertiesDialog.prototype._addAttributeUI = function(name, value) {
@@ -6445,7 +7088,7 @@
       dialog = this;
       attributeUI = new AttributeUI(name, value);
       this._attributeUIs.push(attributeUI);
-      attributeUI.bind('blur', function() {
+      attributeUI.addEventListener('blur', function(ev) {
         var index, lastAttributeUI, length;
         dialog._focusedAttributeUI = null;
         ContentEdit.addCSSClass(dialog._domRemoveAttribute, 'ct-control--muted');
@@ -6462,15 +7105,15 @@
           }
         }
       });
-      attributeUI.bind('focus', function() {
+      attributeUI.addEventListener('focus', function(ev) {
         dialog._focusedAttributeUI = this;
         return ContentEdit.removeCSSClass(dialog._domRemoveAttribute, 'ct-control--muted');
       });
-      attributeUI.bind('namechange', function() {
+      attributeUI.addEventListener('namechange', function(ev) {
         var element, otherAttributeUI, restricted, valid, _i, _len, _ref;
         element = dialog.element;
         name = this.name().toLowerCase();
-        restricted = ContentTools.RESTRICTED_ATTRIBUTES[element.tagName()];
+        restricted = ContentTools.getRestrictedAtributes(element.tagName());
         valid = true;
         if (restricted && restricted.indexOf(name) !== -1) {
           valid = false;
@@ -6532,11 +7175,13 @@
           return selectTab('attributes');
         };
       })(this));
-      this._domCodeTab.addEventListener('mousedown', (function(_this) {
-        return function() {
-          return selectTab('code');
-        };
-      })(this));
+      if (this._supportsCoding) {
+        this._domCodeTab.addEventListener('mousedown', (function(_this) {
+          return function() {
+            return selectTab('code');
+          };
+        })(this));
+      }
       this._domRemoveAttribute.addEventListener('mousedown', (function(_this) {
         return function(ev) {
           var index, last;
@@ -6612,14 +7257,14 @@
       if (before == null) {
         before = null;
       }
-      this._domElement = this.createDiv(['ct-section']);
+      this._domElement = this.constructor.createDiv(['ct-section']);
       if (this._applied) {
         ContentEdit.addCSSClass(this._domElement, 'ct-section--applied');
       }
-      label = this.createDiv(['ct-section__label']);
+      label = this.constructor.createDiv(['ct-section__label']);
       label.textContent = this.style.name();
       this._domElement.appendChild(label);
-      this._domElement.appendChild(this.createDiv(['ct-section__switch']));
+      this._domElement.appendChild(this.constructor.createDiv(['ct-section__switch']));
       return StyleUI.__super__.mount.call(this, domParent, before);
     };
 
@@ -6663,7 +7308,7 @@
       if (before == null) {
         before = null;
       }
-      this._domElement = this.createDiv(['ct-attribute']);
+      this._domElement = this.constructor.createDiv(['ct-attribute']);
       this._domName = document.createElement('input');
       this._domName.setAttribute('class', 'ct-attribute__name');
       this._domName.setAttribute('name', 'name');
@@ -6695,7 +7340,7 @@
           var name, nextDomAttribute, nextNameDom;
           name = _this.name();
           nextDomAttribute = _this._domElement.nextSibling;
-          _this.trigger('blur');
+          _this.dispatchEvent(_this.createEvent('blur'));
           if (name === '' && nextDomAttribute) {
             nextNameDom = nextDomAttribute.querySelector('.ct-attribute__name');
             return nextNameDom.focus();
@@ -6704,12 +7349,12 @@
       })(this));
       this._domName.addEventListener('focus', (function(_this) {
         return function() {
-          return _this.trigger('focus');
+          return _this.dispatchEvent(_this.createEvent('focus'));
         };
       })(this));
       this._domName.addEventListener('input', (function(_this) {
         return function() {
-          return _this.trigger('namechange');
+          return _this.dispatchEvent(_this.createEvent('namechange'));
         };
       })(this));
       this._domName.addEventListener('keydown', (function(_this) {
@@ -6721,12 +7366,12 @@
       })(this));
       this._domValue.addEventListener('blur', (function(_this) {
         return function() {
-          return _this.trigger('blur');
+          return _this.dispatchEvent(_this.createEvent('blur'));
         };
       })(this));
       this._domValue.addEventListener('focus', (function(_this) {
         return function() {
-          return _this.trigger('focus');
+          return _this.dispatchEvent(_this.createEvent('focus'));
         };
       })(this));
       return this._domValue.addEventListener('keydown', (function(_this) {
@@ -6786,16 +7431,16 @@
       if (cfg.head) {
         headCSSClasses.push('ct-section--applied');
       }
-      this._domHeadSection = this.createDiv(headCSSClasses);
+      this._domHeadSection = this.constructor.createDiv(headCSSClasses);
       this._domView.appendChild(this._domHeadSection);
-      domHeadLabel = this.createDiv(['ct-section__label']);
+      domHeadLabel = this.constructor.createDiv(['ct-section__label']);
       domHeadLabel.textContent = ContentEdit._('Table head');
       this._domHeadSection.appendChild(domHeadLabel);
-      this._domHeadSwitch = this.createDiv(['ct-section__switch']);
+      this._domHeadSwitch = this.constructor.createDiv(['ct-section__switch']);
       this._domHeadSection.appendChild(this._domHeadSwitch);
-      this._domBodySection = this.createDiv(['ct-section', 'ct-section--applied', 'ct-section--contains-input']);
+      this._domBodySection = this.constructor.createDiv(['ct-section', 'ct-section--applied', 'ct-section--contains-input']);
       this._domView.appendChild(this._domBodySection);
-      domBodyLabel = this.createDiv(['ct-section__label']);
+      domBodyLabel = this.constructor.createDiv(['ct-section__label']);
       domBodyLabel.textContent = ContentEdit._('Table body (columns)');
       this._domBodySection.appendChild(domBodyLabel);
       this._domBodyInput = document.createElement('input');
@@ -6809,31 +7454,31 @@
       if (cfg.foot) {
         footCSSClasses.push('ct-section--applied');
       }
-      this._domFootSection = this.createDiv(footCSSClasses);
+      this._domFootSection = this.constructor.createDiv(footCSSClasses);
       this._domView.appendChild(this._domFootSection);
-      domFootLabel = this.createDiv(['ct-section__label']);
+      domFootLabel = this.constructor.createDiv(['ct-section__label']);
       domFootLabel.textContent = ContentEdit._('Table foot');
       this._domFootSection.appendChild(domFootLabel);
-      this._domFootSwitch = this.createDiv(['ct-section__switch']);
+      this._domFootSwitch = this.constructor.createDiv(['ct-section__switch']);
       this._domFootSection.appendChild(this._domFootSwitch);
-      domControlGroup = this.createDiv(['ct-control-group', 'ct-control-group--right']);
+      domControlGroup = this.constructor.createDiv(['ct-control-group', 'ct-control-group--right']);
       this._domControls.appendChild(domControlGroup);
-      this._domApply = this.createDiv(['ct-control', 'ct-control--text', 'ct-control--apply']);
+      this._domApply = this.constructor.createDiv(['ct-control', 'ct-control--text', 'ct-control--apply']);
       this._domApply.textContent = 'Apply';
       domControlGroup.appendChild(this._domApply);
       return this._addDOMEventListeners();
     };
 
     TableDialog.prototype.save = function() {
-      var footCSSClass, headCSSClass, tableCfg;
+      var detail, footCSSClass, headCSSClass;
       footCSSClass = this._domFootSection.getAttribute('class');
       headCSSClass = this._domHeadSection.getAttribute('class');
-      tableCfg = {
+      detail = {
         columns: parseInt(this._domBodyInput.value),
         foot: footCSSClass.indexOf('ct-section--applied') > -1,
         head: headCSSClass.indexOf('ct-section--applied') > -1
       };
-      return this.trigger('save', tableCfg);
+      return this.dispatchEvent(this.createEvent('save', detail));
     };
 
     TableDialog.prototype.unmount = function() {
@@ -6913,7 +7558,7 @@
       VideoDialog.__super__.mount.call(this);
       ContentEdit.addCSSClass(this._domElement, 'ct-video-dialog');
       ContentEdit.addCSSClass(this._domView, 'ct-video-dialog__preview');
-      domControlGroup = this.createDiv(['ct-control-group']);
+      domControlGroup = this.constructor.createDiv(['ct-control-group']);
       this._domControls.appendChild(domControlGroup);
       this._domInput = document.createElement('input');
       this._domInput.setAttribute('class', 'ct-video-dialog__input');
@@ -6921,7 +7566,7 @@
       this._domInput.setAttribute('placeholder', ContentEdit._('Paste YouTube or Vimeo URL') + '...');
       this._domInput.setAttribute('type', 'text');
       domControlGroup.appendChild(this._domInput);
-      this._domButton = this.createDiv(['ct-control', 'ct-control--text', 'ct-control--insert', 'ct-control--muted']);
+      this._domButton = this.constructor.createDiv(['ct-control', 'ct-control--text', 'ct-control--insert', 'ct-control--muted']);
       this._domButton.textContent = ContentEdit._('Insert');
       domControlGroup.appendChild(this._domButton);
       return this._addDOMEventListeners();
@@ -6942,9 +7587,13 @@
       videoURL = this._domInput.value.trim();
       embedURL = ContentTools.getEmbedVideoURL(videoURL);
       if (embedURL) {
-        return this.trigger('save', embedURL);
+        return this.dispatchEvent(this.createEvent('save', {
+          'url': embedURL
+        }));
       } else {
-        return this.trigger('save', videoURL);
+        return this.dispatchEvent(this.createEvent('save', {
+          'url': videoURL
+        }));
       }
     };
 
@@ -7018,12 +7667,15 @@
     function _EditorApp() {
       _EditorApp.__super__.constructor.call(this);
       this.history = null;
-      this._state = ContentTools.EditorApp.DORMANT;
+      this._state = 'dormant';
       this._regions = null;
       this._orderedRegions = null;
+      this._rootLastModified = null;
+      this._regionsLastModified = {};
       this._ignition = null;
       this._inspector = null;
       this._toolbox = null;
+      this._emptyRegionsAllowed = false;
     }
 
     _EditorApp.prototype.ctrlDown = function() {
@@ -7032,6 +7684,30 @@
 
     _EditorApp.prototype.domRegions = function() {
       return this._domRegions;
+    };
+
+    _EditorApp.prototype.getState = function() {
+      return this._state;
+    };
+
+    _EditorApp.prototype.ignition = function() {
+      return this._ignition;
+    };
+
+    _EditorApp.prototype.inspector = function() {
+      return this._inspector;
+    };
+
+    _EditorApp.prototype.isDormant = function() {
+      return this._state === 'dormant';
+    };
+
+    _EditorApp.prototype.isReady = function() {
+      return this._state === 'ready';
+    };
+
+    _EditorApp.prototype.isEditing = function() {
+      return this._state === 'editing';
     };
 
     _EditorApp.prototype.orderedRegions = function() {
@@ -7056,59 +7732,82 @@
       return this._shiftDown;
     };
 
+    _EditorApp.prototype.toolbox = function() {
+      return this._toolbox;
+    };
+
     _EditorApp.prototype.busy = function(busy) {
       return this._ignition.busy(busy);
     };
 
-    _EditorApp.prototype.init = function(query, namingProp) {
+    _EditorApp.prototype.init = function(queryOrDOMElements, namingProp) {
       if (namingProp == null) {
         namingProp = 'id';
       }
       this._namingProp = namingProp;
-      this._domRegions = document.querySelectorAll(query);
+      if (queryOrDOMElements.length > 0 && queryOrDOMElements[0].nodeType === Node.ELEMENT_NODE) {
+        this._domRegions = queryOrDOMElements;
+      } else {
+        this._domRegions = document.querySelectorAll(queryOrDOMElements);
+      }
       if (this._domRegions.length === 0) {
         return;
       }
       this.mount();
       this._ignition = new ContentTools.IgnitionUI();
       this.attach(this._ignition);
-      this._ignition.bind('start', (function(_this) {
-        return function() {
-          return _this.start();
-        };
-      })(this));
-      this._ignition.bind('stop', (function(_this) {
-        return function(save) {
-          if (save) {
-            _this.save();
-          } else {
-            if (!_this.revert()) {
-              _this._ignition.changeState('editing');
-              return;
-            }
-          }
-          return _this.stop();
-        };
-      })(this));
       if (this._domRegions.length) {
         this._ignition.show();
+        this._ignition.addEventListener('edit', (function(_this) {
+          return function(ev) {
+            ev.preventDefault();
+            _this.start();
+            return _this._ignition.state('editing');
+          };
+        })(this));
+        this._ignition.addEventListener('confirm', (function(_this) {
+          return function(ev) {
+            ev.preventDefault();
+            _this._ignition.state('ready');
+            return _this.stop(true);
+          };
+        })(this));
+        this._ignition.addEventListener('cancel', (function(_this) {
+          return function(ev) {
+            ev.preventDefault();
+            _this.stop(false);
+            if (_this.isEditing()) {
+              return _this._ignition.state('editing');
+            } else {
+              return _this._ignition.state('ready');
+            }
+          };
+        })(this));
       }
       this._toolbox = new ContentTools.ToolboxUI(ContentTools.DEFAULT_TOOLS);
       this.attach(this._toolbox);
       this._inspector = new ContentTools.InspectorUI();
       this.attach(this._inspector);
-      this._state = ContentTools.EditorApp.READY;
-      ContentEdit.Root.get().bind('detach', (function(_this) {
+      this._state = 'ready';
+      this._handleDetach = (function(_this) {
         return function(element) {
           return _this._preventEmptyRegions();
         };
-      })(this));
-      ContentEdit.Root.get().bind('paste', (function(_this) {
+      })(this);
+      this._handleClipboardPaste = (function(_this) {
         return function(element, ev) {
-          return _this.paste(element, ev.clipboardData);
+          var clipboardData;
+          clipboardData = null;
+          if (ev.clipboardData) {
+            clipboardData = ev.clipboardData.getData('text/plain');
+          }
+          if (window.clipboardData) {
+            clipboardData = window.clipboardData.getData('TEXT');
+          }
+          return _this.paste(element, clipboardData);
         };
-      })(this));
-      ContentEdit.Root.get().bind('next-region', (function(_this) {
+      })(this);
+      this._handleNextRegionTransition = (function(_this) {
         return function(region) {
           var child, element, index, regions, _i, _len, _ref;
           regions = _this.orderedRegions();
@@ -7133,8 +7832,8 @@
           }
           return ContentEdit.Root.get().trigger('next-region', region);
         };
-      })(this));
-      return ContentEdit.Root.get().bind('previous-region', (function(_this) {
+      })(this);
+      this._handlePreviousRegionTransition = (function(_this) {
         return function(region) {
           var child, descendants, element, index, length, regions, _i, _len;
           regions = _this.orderedRegions();
@@ -7161,10 +7860,18 @@
           }
           return ContentEdit.Root.get().trigger('previous-region', region);
         };
-      })(this));
+      })(this);
+      ContentEdit.Root.get().bind('detach', this._handleDetach);
+      ContentEdit.Root.get().bind('paste', this._handleClipboardPaste);
+      ContentEdit.Root.get().bind('next-region', this._handleNextRegionTransition);
+      return ContentEdit.Root.get().bind('previous-region', this._handlePreviousRegionTransition);
     };
 
     _EditorApp.prototype.destroy = function() {
+      ContentEdit.Root.get().unbind('detach', this._handleDetach);
+      ContentEdit.Root.get().unbind('paste', this._handleClipboardPaste);
+      ContentEdit.Root.get().unbind('next-region', this._handleNextRegionTransition);
+      ContentEdit.Root.get().unbind('previous-region', this._handlePreviousRegionTransition);
       return this.unmount();
     };
 
@@ -7184,14 +7891,14 @@
     };
 
     _EditorApp.prototype.mount = function() {
-      this._domElement = this.createDiv(['ct-app']);
+      this._domElement = this.constructor.createDiv(['ct-app']);
       document.body.insertBefore(this._domElement, null);
       return this._addDOMEventListeners();
     };
 
     _EditorApp.prototype.paste = function(element, clipboardData) {
-      var className, content, cursor, encodeHTML, i, insertAt, insertIn, insertNode, item, itemText, lastItem, line, lineLength, lines, selection, tail, tip, _i, _len;
-      content = clipboardData.getData('text/plain');
+      var character, content, cursor, encodeHTML, i, insertAt, insertIn, insertNode, item, itemText, lastItem, line, lineLength, lines, replaced, selection, tags, tail, tip, type, _i, _len;
+      content = clipboardData;
       lines = content.split('\n');
       lines = lines.filter(function(line) {
         return line.trim() !== '';
@@ -7200,17 +7907,17 @@
         return;
       }
       encodeHTML = HTMLString.String.encode;
-      className = element.constructor.name;
-      if ((lines.length > 1 || !element.content) && className !== 'PreText') {
-        if (className === 'ListItemText') {
+      type = element.type();
+      if ((lines.length > 1 || !element.content) && type !== 'PreText') {
+        if (type === 'ListItemText') {
           insertNode = element.parent();
           insertIn = element.parent().parent();
           insertAt = insertIn.children.indexOf(insertNode) + 1;
         } else {
           insertNode = element;
-          if (insertNode.parent().constructor.name !== 'Region') {
+          if (insertNode.parent().type() !== 'Region') {
             insertNode = element.closest(function(node) {
-              return node.parent().constructor.name === 'Region';
+              return node.parent().type() === 'Region';
             });
           }
           insertIn = insertNode.parent();
@@ -7219,7 +7926,7 @@
         for (i = _i = 0, _len = lines.length; _i < _len; i = ++_i) {
           line = lines[i];
           line = encodeHTML(line);
-          if (className === 'ListItemText') {
+          if (type === 'ListItemText') {
             item = new ContentEdit.ListItem();
             itemText = new ContentEdit.ListItemText(line);
             item.attach(itemText);
@@ -7235,11 +7942,22 @@
         return lastItem.selection(new ContentSelect.Range(lineLength, lineLength));
       } else {
         content = encodeHTML(content);
-        content = new HTMLString.String(content, className === 'PreText');
+        content = new HTMLString.String(content, type === 'PreText');
         selection = element.selection();
         cursor = selection.get()[0] + content.length();
         tip = element.content.substring(0, selection.get()[0]);
         tail = element.content.substring(selection.get()[1]);
+        replaced = element.content.substring(selection.get()[0], selection.get()[1]);
+        if (replaced.length()) {
+          character = replaced.characters[0];
+          tags = character.tags();
+          if (character.isTag()) {
+            tags.shift();
+          }
+          if (tags.length >= 1) {
+            content = content.format.apply(content, [0, content.length()].concat(__slice.call(tags)));
+          }
+        }
         element.content = tip.concat(content);
         element.content = element.content.concat(tail, false);
         element.updateInnerHTML();
@@ -7250,6 +7968,9 @@
     };
 
     _EditorApp.prototype.unmount = function() {
+      if (!this.isMounted()) {
+        return;
+      }
       this._domElement.parentNode.removeChild(this._domElement);
       this._domElement = null;
       this._removeDOMEventListeners();
@@ -7259,7 +7980,12 @@
     };
 
     _EditorApp.prototype.revert = function() {
-      if (ContentEdit.Root.get().lastModified() && !window.confirm(ContentEdit._('Your changes have not been saved, do you really want to lose them?'))) {
+      var confirmMessage;
+      if (!this.dispatchEvent(this.createEvent('revert'))) {
+        return;
+      }
+      confirmMessage = ContentEdit._('Your changes have not been saved, do you really want to lose them?');
+      if (ContentEdit.Root.get().lastModified() > this._rootLastModified && !window.confirm(confirmMessage)) {
         return false;
       }
       this.revertToSnapshot(this.history.goTo(0), false);
@@ -7267,20 +7993,28 @@
     };
 
     _EditorApp.prototype.revertToSnapshot = function(snapshot, restoreEditable) {
-      var domRegion, i, name, region, _i, _len, _ref, _ref1;
+      var child, domRegion, i, name, region, _i, _j, _len, _len1, _ref, _ref1, _ref2;
       if (restoreEditable == null) {
         restoreEditable = true;
       }
       _ref = this._regions;
       for (name in _ref) {
         region = _ref[name];
+        _ref1 = region.children;
+        for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+          child = _ref1[_i];
+          child.unmount();
+        }
         region.domElement().innerHTML = snapshot.regions[name];
       }
       if (restoreEditable) {
+        if (ContentEdit.Root.get().focused()) {
+          ContentEdit.Root.get().focused().blur();
+        }
         this._regions = {};
-        _ref1 = this._domRegions;
-        for (i = _i = 0, _len = _ref1.length; _i < _len; i = ++_i) {
-          domRegion = _ref1[i];
+        _ref2 = this._domRegions;
+        for (i = _j = 0, _len1 = _ref2.length; _j < _len1; i = ++_j) {
+          domRegion = _ref2[i];
           name = domRegion.getAttribute(this._namingProp);
           if (!name) {
             name = i;
@@ -7288,14 +8022,24 @@
           this._regions[name] = new ContentEdit.Region(domRegion);
         }
         this.history.replaceRegions(this._regions);
-        return this.history.restoreSelection(snapshot);
+        this.history.restoreSelection(snapshot);
+        return this._inspector.updateTags();
       }
     };
 
-    _EditorApp.prototype.save = function() {
-      var args, child, html, modifiedRegions, name, passive, region, _ref;
-      passive = arguments[0], args = 2 <= arguments.length ? __slice.call(arguments, 1) : [];
-      if (!ContentEdit.Root.get().lastModified() && passive) {
+    _EditorApp.prototype.save = function(passive) {
+      var child, html, modifiedRegions, name, region, root, _i, _len, _ref, _ref1;
+      if (!this.dispatchEvent(this.createEvent('save', {
+        passive: passive
+      }))) {
+        return;
+      }
+      root = ContentEdit.Root.get();
+      if (root.lastModified() === this._rootLastModified && passive) {
+        this.dispatchEvent(this.createEvent('saved', {
+          regions: {},
+          passive: passive
+        }));
         return;
       }
       modifiedRegions = {};
@@ -7309,12 +8053,24 @@
             html = '';
           }
         }
-        modifiedRegions[name] = html;
         if (!passive) {
-          region.domElement().innerHTML = modifiedRegions[name];
+          _ref1 = region.children;
+          for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+            child = _ref1[_i];
+            child.unmount();
+          }
+          region.domElement().innerHTML = html;
         }
+        if (region.lastModified() === this._regionsLastModified[name]) {
+          continue;
+        }
+        modifiedRegions[name] = html;
+        this._regionsLastModified[name] = region.lastModified();
       }
-      return this.trigger.apply(this, ['save', modifiedRegions].concat(__slice.call(args)));
+      return this.dispatchEvent(this.createEvent('saved', {
+        regions: modifiedRegions,
+        passive: passive
+      }));
     };
 
     _EditorApp.prototype.setRegionOrder = function(regionNames) {
@@ -7323,6 +8079,9 @@
 
     _EditorApp.prototype.start = function() {
       var domRegion, i, name, _i, _len, _ref;
+      if (!this.dispatchEvent(this.createEvent('start'))) {
+        return;
+      }
       this.busy(true);
       this._regions = {};
       this._orderedRegions = [];
@@ -7335,39 +8094,63 @@
         }
         this._regions[name] = new ContentEdit.Region(domRegion);
         this._orderedRegions.push(name);
+        this._regionsLastModified[name] = this._regions[name].lastModified();
       }
       this._preventEmptyRegions();
+      this._rootLastModified = ContentEdit.Root.get().lastModified();
       this.history = new ContentTools.History(this._regions);
       this.history.watch();
-      this._state = ContentTools.EditorApp.EDITING;
-      ContentEdit.Root.get().commit();
+      this._state = 'editing';
       this._toolbox.show();
       this._inspector.show();
       return this.busy(false);
     };
 
-    _EditorApp.prototype.stop = function() {
-      if (ContentEdit.Root.get().focused()) {
-        ContentEdit.Root.get().focused().blur();
+    _EditorApp.prototype.stop = function(save) {
+      var focused;
+      if (!this.dispatchEvent(this.createEvent('stop', {
+        save: save
+      }))) {
+        return;
+      }
+      focused = ContentEdit.Root.get().focused();
+      if (focused && focused.isMounted() && focused._syncContent !== void 0) {
+        focused._syncContent();
+      }
+      if (save) {
+        this.save();
+      } else {
+        if (!this.revert()) {
+          return;
+        }
       }
       this.history.stopWatching();
       this.history = null;
       this._toolbox.hide();
       this._inspector.hide();
       this._regions = {};
-      return this._state = ContentTools.EditorApp.READY;
+      this._state = 'ready';
+      if (ContentEdit.Root.get().focused()) {
+        this._allowEmptyRegions((function(_this) {
+          return function() {
+            return ContentEdit.Root.get().focused().blur();
+          };
+        })(this));
+      }
     };
 
     _EditorApp.prototype._addDOMEventListeners = function() {
       this._handleHighlightOn = (function(_this) {
         return function(ev) {
           var _ref;
-          clearTimeout(_this._highlightTimeout);
           if ((_ref = ev.keyCode) === 17 || _ref === 224) {
             _this._ctrlDown = true;
             return;
           }
           if (ev.keyCode === 16) {
+            if (_this._highlightTimeout) {
+              return;
+            }
             _this._shiftDown = true;
             return _this._highlightTimeout = setTimeout(function() {
               return _this.highlightRegions(true);
@@ -7386,6 +8169,7 @@
             _this._shiftDown = false;
             if (_this._highlightTimeout) {
               clearTimeout(_this._highlightTimeout);
+              _this._highlightTimeout = null;
             }
             return _this.highlightRegions(false);
           }
@@ -7395,8 +8179,8 @@
       document.addEventListener('keyup', this._handleHighlightOff);
       window.onbeforeunload = (function(_this) {
         return function(ev) {
-          if (_this._state === ContentTools.EditorApp.EDITING) {
-            return ContentEdit._('Your changes have not been saved, do you really want to lose them?');
+          if (_this._state === 'editing') {
+            return ContentEdit._(ContentTools.CANCEL_MESSAGE);
           }
         };
       })(this);
@@ -7407,17 +8191,37 @@
       })(this));
     };
 
+    _EditorApp.prototype._allowEmptyRegions = function(callback) {
+      this._emptyRegionsAllowed = true;
+      callback();
+      return this._emptyRegionsAllowed = false;
+    };
+
     _EditorApp.prototype._preventEmptyRegions = function() {
-      var name, placeholder, region, _ref, _results;
+      var child, hasEditableChildren, lastModified, name, placeholder, region, _i, _len, _ref, _ref1, _results;
+      if (this._emptyRegionsAllowed) {
+        return;
+      }
       _ref = this._regions;
       _results = [];
       for (name in _ref) {
         region = _ref[name];
-        if (region.children.length > 0) {
+        lastModified = region.lastModified();
+        hasEditableChildren = false;
+        _ref1 = region.children;
+        for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+          child = _ref1[_i];
+          if (child.type() !== 'Static') {
+            hasEditableChildren = true;
+            break;
+          }
+        }
+        if (hasEditableChildren) {
           continue;
         }
         placeholder = new ContentEdit.Text('p', {}, '');
-        _results.push(region.attach(placeholder));
+        region.attach(placeholder);
+        _results.push(region._modified = lastModified);
       }
       return _results;
     };
@@ -7435,12 +8239,6 @@
     var instance;
 
     function EditorApp() {}
-
-    EditorApp.DORMANT = 'dormant';
-
-    EditorApp.READY = 'ready';
-
-    EditorApp.EDITING = 'editing';
 
     instance = null;
 
@@ -7474,6 +8272,10 @@
 
     History.prototype.canUndo = function() {
       return this._snapshotIndex > 0;
+    };
+
+    History.prototype.index = function() {
+      return this._snapshotIndex;
     };
 
     History.prototype.length = function() {
@@ -7574,8 +8376,11 @@
       if (element) {
         snapshot.selected = {};
         region = element.closest(function(node) {
-          return node.constructor.name === 'Region';
+          return node.type() === 'Region';
         });
+        if (!region) {
+          return;
+        }
         _ref1 = this._regions;
         for (name in _ref1) {
           other_region = _ref1[name];
@@ -7609,8 +8414,10 @@
       return this._styles = this._styles.concat(styles);
     };
 
-    StylePalette.styles = function(tagName) {
-      if (tagName === void 0) {
+    StylePalette.styles = function(element) {
+      var tagName;
+      tagName = element.tagName();
+      if (element === void 0) {
         return this._styles.slice();
       }
       return this._styles.filter(function(style) {
@@ -7679,6 +8486,8 @@
 
     Tool.icon = 'tool';
 
+    Tool.requiresElement = true;
+
     Tool.canApply = function(element, selection) {
       return false;
     };
@@ -7694,9 +8503,9 @@
     Tool._insertAt = function(element) {
       var insertIndex, insertNode;
       insertNode = element;
-      if (insertNode.parent().constructor.name !== 'Region') {
+      if (insertNode.parent().type() !== 'Region') {
         insertNode = element.closest(function(node) {
-          return node.parent().constructor.name === 'Region';
+          return node.parent().type() === 'Region';
         });
       }
       insertIndex = insertNode.parent().children.indexOf(insertNode) + 1;
@@ -7750,6 +8559,7 @@
       } else {
         element.content = element.content.format(from, to, new HTMLString.Tag(this.tagName));
       }
+      element.content.optimize();
       element.updateInnerHTML();
       element.taint();
       element.restoreState();
@@ -7794,11 +8604,11 @@
 
     Link.tagName = 'a';
 
-    Link.getHref = function(element, selection) {
+    Link.getAttr = function(attrName, element, selection) {
       var c, from, selectedContent, tag, to, _i, _j, _len, _len1, _ref, _ref1, _ref2;
-      if (element.constructor.name === 'Image') {
+      if (element.type() === 'Image') {
         if (element.a) {
-          return element.a.href;
+          return element.a[attrName];
         }
       } else {
         _ref = selection.get(), from = _ref[0], to = _ref[1];
@@ -7813,7 +8623,7 @@
           for (_j = 0, _len1 = _ref2.length; _j < _len1; _j++) {
             tag = _ref2[_j];
             if (tag.name() === 'a') {
-              return tag.attr('href');
+              return tag.attr(attrName);
             }
           }
         }
@@ -7822,15 +8632,28 @@
     };
 
     Link.canApply = function(element, selection) {
-      if (element.constructor.name === 'Image') {
+      var character;
+      if (element.type() === 'Image') {
         return true;
       } else {
-        return Link.__super__.constructor.canApply.call(this, element, selection);
+        if (!element.content) {
+          return false;
+        }
+        if (!selection) {
+          return false;
+        }
+        if (selection.isCollapsed()) {
+          character = element.content.characters[selection.get()[0]];
+          if (!character || !character.hasTags('a')) {
+            return false;
+          }
+        }
+        return true;
       }
     };
 
     Link.isApplied = function(element, selection) {
-      if (element.constructor.name === 'Image') {
+      if (element.type() === 'Image') {
         return element.a;
       } else {
         return Link.__super__.constructor.isApplied.call(this, element, selection);
@@ -7838,11 +8661,24 @@
     };
 
     Link.apply = function(element, selection, callback) {
-      var allowScrolling, app, applied, dialog, domElement, from, measureSpan, modal, rect, selectTag, to, transparent, _ref;
+      var allowScrolling, app, applied, characters, dialog, domElement, ends, from, measureSpan, modal, rect, scrollX, scrollY, selectTag, starts, to, transparent, _ref, _ref1;
       applied = false;
-      if (element.constructor.name === 'Image') {
+      if (element.type() === 'Image') {
         rect = element.domElement().getBoundingClientRect();
       } else {
+        if (selection.isCollapsed()) {
+          characters = element.content.characters;
+          starts = selection.get(0)[0];
+          ends = starts;
+          while (starts > 0 && characters[starts - 1].hasTags('a')) {
+            starts -= 1;
+          }
+          while (ends < characters.length && characters[ends].hasTags('a')) {
+            ends += 1;
+          }
+          selection = new ContentSelect.Range(starts, ends);
+          selection.select(element.domElement());
+        }
         element.storeState();
         selectTag = new HTMLString.Tag('span', {
           'class': 'ct--puesdo-select'
@@ -7856,7 +8692,7 @@
       }
       app = ContentTools.EditorApp.get();
       modal = new ContentTools.ModalUI(transparent = true, allowScrolling = true);
-      modal.bind('click', function() {
+      modal.addEventListener('click', function() {
         this.unmount();
         dialog.hide();
         if (element.content) {
@@ -7866,32 +8702,56 @@
         }
         return callback(applied);
       });
-      dialog = new ContentTools.LinkDialog(this.getHref(element, selection));
-      dialog.position([rect.left + (rect.width / 2) + window.scrollX, rect.top + (rect.height / 2) + window.scrollY]);
-      dialog.bind('save', function(href) {
-        var a;
-        dialog.unbind('save');
+      dialog = new ContentTools.LinkDialog(this.getAttr('href', element, selection), this.getAttr('target', element, selection));
+      _ref1 = ContentTools.getScrollPosition(), scrollX = _ref1[0], scrollY = _ref1[1];
+      dialog.position([rect.left + (rect.width / 2) + scrollX, rect.top + (rect.height / 2) + scrollY]);
+      dialog.addEventListener('save', function(ev) {
+        var a, alignmentClassNames, className, detail, linkClasses, _i, _j, _len, _len1;
+        detail = ev.detail();
         applied = true;
-        if (element.constructor.name === 'Image') {
-          if (href) {
+        if (element.type() === 'Image') {
+          alignmentClassNames = ['align-center', 'align-left', 'align-right'];
+          if (detail.href) {
             element.a = {
-              href: href
+              href: detail.href,
+              target: detail.target ? detail.target : '',
+              "class": element.a ? element.a['class'] : ''
             };
+            for (_i = 0, _len = alignmentClassNames.length; _i < _len; _i++) {
+              className = alignmentClassNames[_i];
+              if (element.hasCSSClass(className)) {
+                element.removeCSSClass(className);
+                element.a['class'] = className;
+                break;
+              }
+            }
           } else {
+            linkClasses = [];
+            if (element.a['class']) {
+              linkClasses = element.a['class'].split(' ');
+            }
+            for (_j = 0, _len1 = alignmentClassNames.length; _j < _len1; _j++) {
+              className = alignmentClassNames[_j];
+              if (linkClasses.indexOf(className) > -1) {
+                element.addCSSClass(className);
+                break;
+              }
+            }
             element.a = null;
           }
+          element.unmount();
+          element.mount();
         } else {
           element.content = element.content.unformat(from, to, 'a');
-          if (href) {
-            a = new HTMLString.Tag('a', {
-              href: href
-            });
+          if (detail.href) {
+            a = new HTMLString.Tag('a', detail);
             element.content = element.content.format(from, to, a);
+            element.content.optimize();
           }
           element.updateInnerHTML();
-          element.taint();
         }
-        return modal.trigger('click');
+        element.taint();
+        return modal.dispatchEvent(modal.createEvent('click'));
       });
       app.attach(modal);
       app.attach(dialog);
@@ -7919,13 +8779,23 @@
     Heading.tagName = 'h1';
 
     Heading.canApply = function(element, selection) {
-      return element.content !== void 0 && element.parent().constructor.name === 'Region';
+      return element.content !== void 0 && ['Text', 'PreText'].indexOf(element.type()) !== -1;
+    };
+
+    Heading.isApplied = function(element, selection) {
+      if (!element.content) {
+        return false;
+      }
+      if (['Text', 'PreText'].indexOf(element.type()) === -1) {
+        return false;
+      }
+      return element.tagName() === this.tagName;
     };
 
     Heading.apply = function(element, selection, callback) {
       var content, insertAt, parent, textElement;
       element.storeState();
-      if (element.constructor.name === 'PreText') {
+      if (element.type() === 'PreText') {
         content = element.content.html().replace(/&nbsp;/g, ' ');
         textElement = new ContentEdit.Text(this.tagName, {}, content);
         parent = element.parent();
@@ -7936,7 +8806,11 @@
         textElement.focus();
         textElement.selection(selection);
       } else {
-        element.tagName(this.tagName);
+        if (element.tagName() === this.tagName) {
+          element.tagName('p');
+        } else {
+          element.tagName(this.tagName);
+        }
         element.restoreState();
       }
       return callback(true);
@@ -7955,7 +8829,7 @@
 
     ContentTools.ToolShelf.stow(Subheading, 'subheading');
 
-    Subheading.label = 'Subeading';
+    Subheading.label = 'Subheading';
 
     Subheading.icon = 'subheading';
 
@@ -7991,9 +8865,9 @@
       if (ContentTools.Tools.Heading.canApply(element) && !forceAdd) {
         return Paragraph.__super__.constructor.apply.call(this, element, selection, callback);
       } else {
-        if (element.parent().constructor.name !== 'Region') {
+        if (element.parent().type() !== 'Region') {
           element = element.closest(function(node) {
-            return node.parent().constructor.name === 'Region';
+            return node.parent().type() === 'Region';
           });
         }
         region = element.parent();
@@ -8025,6 +8899,10 @@
 
     Preformatted.apply = function(element, selection, callback) {
       var insertAt, parent, preText, text;
+      if (element.type() === 'PreText') {
+        ContentTools.Tools.Paragraph.apply(element, selection, callback);
+        return;
+      }
       text = element.content.text();
       preText = new ContentEdit.PreText('pre', {}, HTMLString.String.encode(text));
       parent = element.parent();
@@ -8065,20 +8943,20 @@
       if (!this.canApply(element)) {
         return false;
       }
-      if ((_ref = element.constructor.name) === 'ListItemText' || _ref === 'TableCellText') {
+      if ((_ref = element.type()) === 'ListItemText' || _ref === 'TableCellText') {
         element = element.parent();
       }
       return element.hasCSSClass(this.className);
     };
 
     AlignLeft.apply = function(element, selection, callback) {
-      var className, _i, _len, _ref, _ref1;
-      if ((_ref = element.constructor.name) === 'ListItemText' || _ref === 'TableCellText') {
+      var alignmentClassNames, className, _i, _len, _ref;
+      if ((_ref = element.type()) === 'ListItemText' || _ref === 'TableCellText') {
         element = element.parent();
       }
-      _ref1 = ['text-center', 'text-left', 'text-right'];
-      for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
-        className = _ref1[_i];
+      alignmentClassNames = [ContentTools.Tools.AlignLeft.className, ContentTools.Tools.AlignCenter.className, ContentTools.Tools.AlignRight.className];
+      for (_i = 0, _len = alignmentClassNames.length; _i < _len; _i++) {
+        className = alignmentClassNames[_i];
         if (element.hasCSSClass(className)) {
           element.removeCSSClass(className);
           if (className === this.className) {
@@ -8149,15 +9027,15 @@
 
     UnorderedList.canApply = function(element, selection) {
       var _ref;
-      return element.content !== void 0 && ((_ref = element.parent().constructor.name) === 'Region' || _ref === 'ListItem');
+      return element.content !== void 0 && ((_ref = element.parent().type()) === 'Region' || _ref === 'ListItem');
     };
 
     UnorderedList.apply = function(element, selection, callback) {
       var insertAt, list, listItem, listItemText, parent;
-      if (element.parent().constructor.name === 'ListItem') {
+      if (element.parent().type() === 'ListItem') {
         element.storeState();
         list = element.closest(function(node) {
-          return node.constructor.name === 'List';
+          return node.type() === 'List';
         });
         list.tagName(this.listTag);
         element.restoreState();
@@ -8225,12 +9103,11 @@
       app = ContentTools.EditorApp.get();
       modal = new ContentTools.ModalUI();
       table = element.closest(function(node) {
-        return node && node.constructor.name === 'Table';
+        return node && node.type() === 'Table';
       });
       dialog = new ContentTools.TableDialog(table);
-      dialog.bind('cancel', (function(_this) {
+      dialog.addEventListener('cancel', (function(_this) {
         return function() {
-          dialog.unbind('cancel');
           modal.hide();
           dialog.hide();
           if (element.restoreState) {
@@ -8239,15 +9116,15 @@
           return callback(false);
         };
       })(this));
-      dialog.bind('save', (function(_this) {
-        return function(tableCfg) {
-          var index, keepFocus, node, _ref;
-          dialog.unbind('save');
+      dialog.addEventListener('save', (function(_this) {
+        return function(ev) {
+          var index, keepFocus, node, tableCfg, _ref;
+          tableCfg = ev.detail();
           keepFocus = true;
           if (table) {
             _this._updateTable(tableCfg, table);
             keepFocus = element.closest(function(node) {
-              return node && node.constructor.name === 'Table';
+              return node && node.type() === 'Table';
             });
           } else {
             table = _this._createTable(tableCfg);
@@ -8383,7 +9260,7 @@
     Indent.icon = 'indent';
 
     Indent.canApply = function(element, selection) {
-      return element.parent().constructor.name === 'ListItem' && element.parent().parent().children.indexOf(element.parent()) > 0;
+      return element.parent().type() === 'ListItem' && element.parent().parent().children.indexOf(element.parent()) > 0;
     };
 
     Indent.apply = function(element, selection, callback) {
@@ -8409,7 +9286,7 @@
     Unindent.icon = 'unindent';
 
     Unindent.canApply = function(element, selection) {
-      return element.parent().constructor.name === 'ListItem';
+      return element.parent().type() === 'ListItem';
     };
 
     Unindent.apply = function(element, selection, callback) {
@@ -8481,9 +9358,8 @@
       app = ContentTools.EditorApp.get();
       modal = new ContentTools.ModalUI();
       dialog = new ContentTools.ImageDialog();
-      dialog.bind('cancel', (function(_this) {
+      dialog.addEventListener('cancel', (function(_this) {
         return function() {
-          dialog.unbind('cancel');
           modal.hide();
           dialog.hide();
           if (element.restoreState) {
@@ -8492,10 +9368,13 @@
           return callback(false);
         };
       })(this));
-      dialog.bind('save', (function(_this) {
-        return function(imageURL, imageSize, imageAttrs) {
-          var image, index, node, _ref;
-          dialog.unbind('save');
+      dialog.addEventListener('save', (function(_this) {
+        return function(ev) {
+          var detail, image, imageAttrs, imageSize, imageURL, index, node, _ref;
+          detail = ev.detail();
+          imageURL = detail.imageURL;
+          imageSize = detail.imageSize;
+          imageAttrs = detail.imageAttrs;
           if (!imageAttrs) {
             imageAttrs = {};
           }
@@ -8546,9 +9425,8 @@
       app = ContentTools.EditorApp.get();
       modal = new ContentTools.ModalUI();
       dialog = new ContentTools.VideoDialog();
-      dialog.bind('cancel', (function(_this) {
+      dialog.addEventListener('cancel', (function(_this) {
         return function() {
-          dialog.unbind('cancel');
           modal.hide();
           dialog.hide();
           if (element.restoreState) {
@@ -8557,15 +9435,15 @@
           return callback(false);
         };
       })(this));
-      dialog.bind('save', (function(_this) {
-        return function(videoURL) {
-          var index, node, video, _ref;
-          dialog.unbind('save');
-          if (videoURL) {
+      dialog.addEventListener('save', (function(_this) {
+        return function(ev) {
+          var index, node, url, video, _ref;
+          url = ev.detail().url;
+          if (url) {
             video = new ContentEdit.Video('iframe', {
               'frameborder': 0,
               'height': ContentTools.DEFAULT_VIDEO_HEIGHT,
-              'src': videoURL,
+              'src': url,
               'width': ContentTools.DEFAULT_VIDEO_WIDTH
             });
             _ref = _this._insertAt(element), node = _ref[0], index = _ref[1];
@@ -8578,7 +9456,7 @@
           }
           modal.hide();
           dialog.hide();
-          return callback(videoURL !== '');
+          return callback(url !== '');
         };
       })(this));
       app.attach(modal);
@@ -8603,6 +9481,8 @@
     Undo.label = 'Undo';
 
     Undo.icon = 'undo';
+
+    Undo.requiresElement = false;
 
     Undo.canApply = function(element, selection) {
       var app;
@@ -8635,6 +9515,8 @@
     Redo.label = 'Redo';
 
     Redo.icon = 'redo';
+
+    Redo.requiresElement = false;
 
     Redo.canApply = function(element, selection) {
       var app;
@@ -8676,11 +9558,20 @@
       var app, list, row, table;
       app = ContentTools.EditorApp.get();
       element.blur();
-      switch (element.constructor.name) {
+      if (element.nextContent()) {
+        element.nextContent().focus();
+      } else if (element.previousContent()) {
+        element.previousContent().focus();
+      }
+      if (!element.isMounted()) {
+        callback(true);
+        return;
+      }
+      switch (element.type()) {
         case 'ListItemText':
           if (app.ctrlDown()) {
             list = element.closest(function(node) {
-              return node.parent().constructor.name === 'Region';
+              return node.parent().type() === 'Region';
             });
             list.parent().detach(list);
           } else {
@@ -8690,7 +9581,7 @@
         case 'TableCellText':
           if (app.ctrlDown()) {
             table = element.closest(function(node) {
-              return node.constructor.name === 'Table';
+              return node.type() === 'Table';
             });
             table.parent().detach(table);
           } else {

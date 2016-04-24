@@ -24,7 +24,7 @@ class ContentTools.ModalUI extends ContentTools.WidgetUI
         # Mount the widget to the DOM
 
         # Modal
-        @_domElement = @createDiv([
+        @_domElement = @constructor.createDiv([
             'ct-widget',
             'ct-modal'
             ])
@@ -57,4 +57,4 @@ class ContentTools.ModalUI extends ContentTools.WidgetUI
 
         # Trigger a custom event for clicks on the modal
         @_domElement.addEventListener 'click', (ev) =>
-            @trigger('click')
+            @dispatchEvent(@createEvent('click'))

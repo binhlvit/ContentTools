@@ -88,12 +88,12 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
         # Add controls
 
         # Image tools & progress bar
-        domTools = @createDiv(
+        domTools = @constructor.createDiv(
             ['ct-control-group', 'ct-control-group--left'])
         @_domControls.appendChild(domTools)
 
         # Rotate CCW
-        @_domRotateCCW = @createDiv([
+        @_domRotateCCW = @constructor.createDiv([
             'ct-control',
             'ct-control--icon',
             'ct-control--rotate-ccw'
@@ -105,7 +105,7 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
         domTools.appendChild(@_domRotateCCW)
 
         # Rotate CW
-        @_domRotateCW = @createDiv([
+        @_domRotateCW = @constructor.createDiv([
             'ct-control',
             'ct-control--icon',
             'ct-control--rotate-cw'
@@ -117,7 +117,7 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
         domTools.appendChild(@_domRotateCW)
 
         # Rotate CW
-        @_domCrop = @createDiv([
+        @_domCrop = @constructor.createDiv([
             'ct-control',
             'ct-control--icon',
             'ct-control--crop'
@@ -126,18 +126,19 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
         domTools.appendChild(@_domCrop)
 
         # Progress bar
-        domProgressBar = @createDiv(['ct-progress-bar'])
+        domProgressBar = @constructor.createDiv(['ct-progress-bar'])
         domTools.appendChild(domProgressBar)
 
-        @_domProgress = @createDiv(['ct-progress-bar__progress'])
+        @_domProgress = @constructor.createDiv(['ct-progress-bar__progress'])
         domProgressBar.appendChild(@_domProgress)
 
         # Actions
-        domActions = @createDiv(['ct-control-group', 'ct-control-group--right'])
+        domActions = @constructor.createDiv(
+            ['ct-control-group', 'ct-control-group--right'])
         @_domControls.appendChild(domActions)
 
         # Upload button
-        @_domUpload = @createDiv([
+        @_domUpload = @constructor.createDiv([
             'ct-control',
             'ct-control--text',
             'ct-control--upload'
@@ -154,7 +155,7 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
         @_domUpload.appendChild(@_domInput)
 
         # Insert
-        @_domInsert = @createDiv([
+        @_domInsert = @constructor.createDiv([
             'ct-control',
             'ct-control--text',
             'ct-control--insert'
@@ -163,7 +164,7 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
         domActions.appendChild(@_domInsert)
 
         # Cancel
-        @_domCancelUpload = @createDiv([
+        @_domCancelUpload = @constructor.createDiv([
             'ct-control',
             'ct-control--text',
             'ct-control--cancel'
@@ -172,7 +173,7 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
         domActions.appendChild(@_domCancelUpload)
 
         # Clear
-        @_domClear = @createDiv([
+        @_domClear = @constructor.createDiv([
             'ct-control',
             'ct-control--text',
             'ct-control--clear'
@@ -183,7 +184,7 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
         # Add interaction handlers
         @_addDOMEventListeners()
 
-        @trigger('imageUploader.mount')
+        @dispatchEvent(@createEvent('imageuploader.mount'))
 
     populate: (imageURL, imageSize) ->
         # Populate the dialog with an image
@@ -194,7 +195,7 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
 
         # Check for existing image, if there isn't one add one
         if not @_domImage
-            @_domImage = @createDiv(['ct-image-dialog__image'])
+            @_domImage = @constructor.createDiv(['ct-image-dialog__image'])
             @_domView.appendChild(@_domImage)
 
         # Set the image to appear
@@ -229,7 +230,15 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
 
     save: (imageURL, imageSize, imageAttrs) ->
         # Save and insert the current image
-        @trigger('save', imageURL, imageSize, imageAttrs)
+        @dispatchEvent(
+            @createEvent(
+                'save',
+                {
+                    'imageURL': imageURL,
+                    'imageSize': imageSize,
+                    'imageAttrs': imageAttrs
+                })
+            )
 
     state: (state) ->
         # Set/get the state of the dialog (empty, uploading, populated)
@@ -269,7 +278,7 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
         @_domRotateCW = null
         @_domUpload = null
 
-        @trigger('imageUploader.unmount')
+        @dispatchEvent(@createEvent('imageuploader.unmount'))
 
     # Private methods
 
@@ -291,25 +300,27 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
                 ev.target.type = 'text'
                 ev.target.type = 'file'
 
-            @trigger('imageUploader.fileReady', file)
+            @dispatchEvent(
+                @createEvent('imageuploader.fileready', {file: file})
+                )
 
         # Cancel upload
         @_domCancelUpload.addEventListener 'click', (ev) =>
-            @trigger('imageUploader.cancelUpload')
+            @dispatchEvent(@createEvent('imageuploader.cancelupload'))
 
         # Clear image
         @_domClear.addEventListener 'click', (ev) =>
             @removeCropMarks()
-            @trigger('imageUploader.clear')
+            @dispatchEvent(@createEvent('imageuploader.clear'))
 
         # Rotate the image
         @_domRotateCCW.addEventListener 'click', (ev) =>
             @removeCropMarks()
-            @trigger('imageUploader.rotateCCW')
+            @dispatchEvent(@createEvent('imageuploader.rotateccw'))
 
         @_domRotateCW.addEventListener 'click', (ev) =>
             @removeCropMarks()
-            @trigger('imageUploader.rotateCW')
+            @dispatchEvent(@createEvent('imageuploader.rotatecw'))
 
         @_domCrop.addEventListener 'click', (ev) =>
             if @_cropMarks
@@ -319,7 +330,7 @@ class ContentTools.ImageDialog extends ContentTools.DialogUI
                 @addCropMarks()
 
         @_domInsert.addEventListener 'click', (ev) =>
-            @trigger('imageUploader.save')
+            @dispatchEvent(@createEvent('imageuploader.save'))
 
 
 class CropMarksUI extends ContentTools.AnchoredComponentUI
@@ -348,19 +359,19 @@ class CropMarksUI extends ContentTools.AnchoredComponentUI
 
     mount: (domParent, before=null) ->
         # Crop marks
-        @_domElement = @createDiv(['ct-crop-marks'])
+        @_domElement = @constructor.createDiv(['ct-crop-marks'])
 
         # Clippers
-        @_domClipper = @createDiv(['ct-crop-marks__clipper'])
+        @_domClipper = @constructor.createDiv(['ct-crop-marks__clipper'])
         @_domElement.appendChild(@_domClipper)
 
         # Rulers
         @_domRulers = [
-            @createDiv([
+            @constructor.createDiv([
                 'ct-crop-marks__ruler',
                 'ct-crop-marks__ruler--top-left'
                 ]),
-            @createDiv([
+            @constructor.createDiv([
                 'ct-crop-marks__ruler',
                 'ct-crop-marks__ruler--bottom-right'
                 ])
@@ -370,11 +381,11 @@ class CropMarksUI extends ContentTools.AnchoredComponentUI
 
         # Handles
         @_domHandles = [
-            @createDiv([
+            @constructor.createDiv([
                 'ct-crop-marks__handle',
                 'ct-crop-marks__handle--top-left'
                 ]),
-            @createDiv([
+            @constructor.createDiv([
                 'ct-crop-marks__handle',
                 'ct-crop-marks__handle--bottom-right'
                 ])

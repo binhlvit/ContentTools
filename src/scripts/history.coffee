@@ -32,6 +32,10 @@ class ContentTools.History
         # Return true if an undo can be performed
         return @_snapshotIndex > 0
 
+    index: () ->
+        # Return the snapshot index for the history stack
+        return @_snapshotIndex
+
     length: () ->
         # The number of snapshots stored
         return @_snapshots.length
@@ -145,12 +149,18 @@ class ContentTools.History
 
         # Store any selection state information
         element = ContentEdit.Root.get().focused()
+
         if element
             snapshot.selected = {}
 
             # Determine the selected region
             region = element.closest (node) ->
-                return node.constructor.name == 'Region'
+                return node.type() is 'Region'
+
+            # Check a region can be found (this catches cases where the focused
+            # element isn't attached to the region.
+            if not region
+                return
 
             for name, other_region of @_regions
                 if region == other_region

@@ -16,8 +16,8 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
 
         # Check the element to determine if the dialog should provide a code
         # editor.
-        @_supportsCoding = element.content
-        if element.constructor.name in ['ListItem', 'TableCell']
+        @_supportsCoding = @element.content
+        if @element.type() in ['ListItem', 'TableCell']
             @_supportsCoding = true
 
     # Methods
@@ -54,7 +54,7 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
                 changedAttributes[name] = value
 
         # Find removed attributes
-        restricted = ContentTools.RESTRICTED_ATTRIBUTES[@element.tagName()]
+        restricted = ContentTools.getRestrictedAtributes(@element.tagName())
         for name, value of @element.attributes()
             if restricted and restricted.indexOf(name.toLowerCase()) != -1
                 continue
@@ -104,7 +104,7 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
         # default it is opened with styles tab showing.
 
         # Styles
-        @_domStyles = @createDiv(['ct-properties-dialog__styles'])
+        @_domStyles = @constructor.createDiv(['ct-properties-dialog__styles'])
         @_domStyles.setAttribute(
             'data-ct-empty',
             ContentEdit._('No styles available for this tag')
@@ -112,7 +112,7 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
         @_domView.appendChild(@_domStyles)
 
         # Add the styles in the style palette for this element
-        for style in ContentTools.StylePalette.styles(@element.tagName())
+        for style in ContentTools.StylePalette.styles(@element)
             styleUI = new StyleUI(
                 style,
                 @element.hasCSSClass(style.cssClass())
@@ -121,11 +121,12 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
             styleUI.mount(@_domStyles)
 
         # Attributes
-        @_domAttributes = @createDiv(['ct-properties-dialog__attributes'])
+        @_domAttributes = @constructor.createDiv(
+            ['ct-properties-dialog__attributes'])
         @_domView.appendChild(@_domAttributes)
 
         # Add the elements attributes
-        restricted = ContentTools.RESTRICTED_ATTRIBUTES[@element.tagName()]
+        restricted = ContentTools.getRestrictedAtributes(@element.tagName())
         attributes = @element.attributes()
 
         # Build a list of attribute names that we can sort alphabetically. We
@@ -152,7 +153,7 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
         @_addAttributeUI('', '')
 
         # Code
-        @_domCode = @createDiv(['ct-properties-dialog__code'])
+        @_domCode = @constructor.createDiv(['ct-properties-dialog__code'])
         @_domView.appendChild(@_domCode)
 
         # Add a textarea in which the inner HTML can be edited
@@ -165,11 +166,12 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
         # Controls
 
         # Tabs
-        domTabs = @createDiv(['ct-control-group', 'ct-control-group--left'])
+        domTabs = @constructor.createDiv(
+            ['ct-control-group', 'ct-control-group--left'])
         @_domControls.appendChild(domTabs)
 
         # Styles
-        @_domStylesTab = @createDiv([
+        @_domStylesTab = @constructor.createDiv([
             'ct-control',
             'ct-control--icon',
             'ct-control--styles'
@@ -178,7 +180,7 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
         domTabs.appendChild(@_domStylesTab)
 
         # Attributes
-        @_domAttributesTab = @createDiv([
+        @_domAttributesTab = @constructor.createDiv([
             'ct-control',
             'ct-control--icon',
             'ct-control--attributes'
@@ -190,7 +192,7 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
         domTabs.appendChild(@_domAttributesTab)
 
         # Code
-        @_domCodeTab = @createDiv([
+        @_domCodeTab = @constructor.createDiv([
             'ct-control',
             'ct-control--icon',
             'ct-control--code'
@@ -202,7 +204,7 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
             ContentEdit.addCSSClass(@_domCodeTab, 'ct-control--muted')
 
         # Remove attribute control
-        @_domRemoveAttribute = @createDiv([
+        @_domRemoveAttribute = @constructor.createDiv([
             'ct-control',
             'ct-control--icon',
             'ct-control--remove',
@@ -215,10 +217,11 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
         domTabs.appendChild(@_domRemoveAttribute)
 
         # Actions
-        domActions = @createDiv(['ct-control-group', 'ct-control-group--right'])
+        domActions = @constructor.createDiv(
+            ['ct-control-group', 'ct-control-group--right'])
         @_domControls.appendChild(domActions)
 
-        @_domApply = @createDiv([
+        @_domApply = @constructor.createDiv([
             'ct-control',
             'ct-control--text',
             'ct-control--apply'
@@ -260,7 +263,12 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
         if @_supportsCoding
             innerHTML = @_domInnerHTML.value
 
-        @trigger('save', @changedAttributes(), @changedStyles(), innerHTML)
+        detail = {
+            changedAttributes: @changedAttributes(),
+            changedStyles: @changedStyles(),
+            innerHTML: innerHTML
+            }
+        @dispatchEvent(@createEvent('save', detail))
 
     # Private methods
 
@@ -274,7 +282,7 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
         @_attributeUIs.push(attributeUI)
 
         # Handle blur events
-        attributeUI.bind 'blur', () ->
+        attributeUI.addEventListener 'blur', (ev) ->
 
             # Mark that no attribute currently has focus
             dialog._focusedAttributeUI = null
@@ -301,7 +309,7 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
                     dialog._addAttributeUI('', '')
 
         # Handle focus events
-        attributeUI.bind 'focus', () ->
+        attributeUI.addEventListener 'focus', (ev) ->
             # Mark that this is the attribute that currently has focus
             dialog._focusedAttributeUI = this
 
@@ -312,10 +320,10 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
                 )
 
         # Handle input events
-        attributeUI.bind 'namechange', () ->
+        attributeUI.addEventListener 'namechange', (ev) ->
             element = dialog.element
             name = @name().toLowerCase()
-            restricted = ContentTools.RESTRICTED_ATTRIBUTES[element.tagName()]
+            restricted = ContentTools.getRestrictedAtributes(element.tagName())
 
             # Validate the name
             valid = true
@@ -400,8 +408,9 @@ class ContentTools.PropertiesDialog extends ContentTools.DialogUI
             selectTab('attributes')
 
         # Code
-        @_domCodeTab.addEventListener 'mousedown', () =>
-            selectTab('code')
+        if @_supportsCoding
+            @_domCodeTab.addEventListener 'mousedown', () =>
+                selectTab('code')
 
         # Remove attribute
         @_domRemoveAttribute.addEventListener 'mousedown', (ev) =>
@@ -487,17 +496,17 @@ class StyleUI extends ContentTools.AnchoredComponentUI
         # Mount the component to the DOM
 
         # Section
-        @_domElement = @createDiv(['ct-section'])
+        @_domElement = @constructor.createDiv(['ct-section'])
         if @_applied
             ContentEdit.addCSSClass(@_domElement, 'ct-section--applied')
 
         # Label
-        label = @createDiv(['ct-section__label'])
+        label = @constructor.createDiv(['ct-section__label'])
         label.textContent = @style.name()
         @_domElement.appendChild(label)
 
         # Switch
-        @_domElement.appendChild(@createDiv(['ct-section__switch']))
+        @_domElement.appendChild(@constructor.createDiv(['ct-section__switch']))
 
         super(domParent, before)
 
@@ -541,7 +550,7 @@ class AttributeUI extends ContentTools.AnchoredComponentUI
         # Mount the component to the DOM
 
         # Attribute
-        @_domElement = @createDiv(['ct-attribute'])
+        @_domElement = @constructor.createDiv(['ct-attribute'])
 
         # Name
         @_domName = document.createElement('input')
@@ -585,7 +594,7 @@ class AttributeUI extends ContentTools.AnchoredComponentUI
             name = @name()
             nextDomAttribute = @_domElement.nextSibling
 
-            @trigger 'blur'
+            @dispatchEvent(@createEvent('blur'))
 
             # Determine if the next DOM element is an attribute
             if name is '' and nextDomAttribute
@@ -595,10 +604,10 @@ class AttributeUI extends ContentTools.AnchoredComponentUI
                 nextNameDom.focus()
 
         @_domName.addEventListener 'focus', () =>
-            @trigger 'focus'
+            @dispatchEvent(@createEvent('focus'))
 
         @_domName.addEventListener 'input', () =>
-            @trigger 'namechange'
+            @dispatchEvent(@createEvent('namechange'))
 
         @_domName.addEventListener 'keydown', (ev) =>
             if ev.keyCode is 13
@@ -606,10 +615,10 @@ class AttributeUI extends ContentTools.AnchoredComponentUI
 
         # Value
         @_domValue.addEventListener 'blur', () =>
-            @trigger 'blur'
+            @dispatchEvent(@createEvent('blur'))
 
         @_domValue.addEventListener 'focus', () =>
-            @trigger 'focus'
+            @dispatchEvent(@createEvent('focus'))
 
         @_domValue.addEventListener 'keydown', (ev) =>
             if ev.keyCode != 13 and (ev.keyCode != 9 or ev.shiftKey)
