@@ -224,17 +224,32 @@ class ContentTools.ToolboxUI extends ContentTools.WidgetUI
                 for name, toolUI of @_toolUIs
                     toolUI.update(element, selection)
 
-        @_updateToolsTimeout = setInterval(@_updateTools, 100)
+        @_updateToolsInterval = setInterval(@_updateTools, 100)
 
         # Capture top-level key events so that we can override common key
         # behaviour.
         @_handleKeyDown = (ev) =>
 
-            # Add support for deleting non-text elements using the `delete` key.
-            if ev.keyCode is 46
-                element = ContentEdit.Root.get().focused()
-                if element and not element.content
-                    ContentTools.Tools.Remove.apply(element, null, () ->)
+            # Keyboard events that apply only to non-text elements
+            element = ContentEdit.Root.get().focused()
+            if element and not element.content
+
+                # Add support for deleting non-text elements using the `delete`
+                # key.
+                if ev.keyCode is 46
+                    ev.preventDefault()
+
+                    # Remove the element
+                    return ContentTools.Tools.Remove.apply(element, null, () ->)
+
+                # Add support for adding a new paragraph after non-text elements
+                # using the `return` key.
+                if ev.keyCode is 13
+                    ev.preventDefault()
+
+                    # Add a new paragraph element after the current element
+                    Paragraph = ContentTools.Tools.Paragraph
+                    return Paragraph.apply(element, null, () ->)
 
             # Undo/Redo key support
             #
@@ -319,17 +334,14 @@ class ContentTools.ToolboxUI extends ContentTools.WidgetUI
         if @isMounted()
             @_domGrip.removeEventListener('mousedown', @_onStartDragging)
 
-        # Delete events
-        window.removeEventListener('keydown', @_handleKeyDown)
-
         # Remove key events
-        window.removeEventListener('resize', @_handleResize)
+        window.removeEventListener('keydown', @_handleKeyDown)
 
         # Remove resize handler
         window.removeEventListener('resize', @_handleResize)
 
         # Remove timer for updating tools
-        clearInterval(@_updateToolsTimeout)
+        clearInterval(@_updateToolsInterval)
 
     # Dragging methods
 
@@ -462,7 +474,7 @@ class ContentTools.ToolUI extends ContentTools.AnchoredComponentUI
             ])
 
         # Add the tooltip
-        @_domElement.setAttribute('data-tooltip', ContentEdit._(@tool.label))
+        @_domElement.setAttribute('data-ct-tooltip', ContentEdit._(@tool.label))
 
         super(domParent, before)
 

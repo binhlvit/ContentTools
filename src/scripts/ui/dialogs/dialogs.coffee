@@ -96,6 +96,18 @@ class ContentTools.DialogUI extends ContentTools.WidgetUI
         # class to override this method an call `_addEventListeners` at the
         # appropriate point.
 
+        # Blur the focused element to ensure that it's contents can be edited
+        # once the dialog is open.
+        if document.activeElement
+            document.activeElement.blur()
+
+            # HACK: This is a work around for blurring the contenteditable
+            # element in webkit, thanks to Marek Suscak's fiddle here:
+            # http://jsfiddle.net/mareksuscak/oytdoxy8/
+            #
+            # ~ Anthony Blackshaw <ant@getme.co.uk>, 28th June 2016
+            window.getSelection().removeAllRanges()
+
         # Create the dialog
         dialogCSSClasses = [
             'ct-widget',
